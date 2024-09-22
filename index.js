@@ -123,7 +123,7 @@ bot.on('message', async (msg) => {
 
                 await bot.sendMessage(chatId, 'You can download the audio directly from the button below:', options);
 
-                // Set a timer to delete the file after one minute
+                // Set a timer to delete the file after one minute and expire the link
                 setTimeout(() => {
                     fs.unlinkSync(filePath);
                     console.log(`File ${filePath} deleted after 1 minute.`);
