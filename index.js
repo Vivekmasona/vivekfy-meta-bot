@@ -21,7 +21,6 @@ async function processAudioWithMetadata(apiUrl, coverUrl, title, artist, chatId)
         const coverImageResponse = await axios.get(coverUrl, { responseType: 'arraybuffer' });
         fs.writeFileSync(coverImagePath, coverImageResponse.data);
 
-        // Inform user that audio processing has started
         await bot.sendMessage(chatId, 'Processing audio... Please wait while we process your file.');
 
         return new Promise((resolve, reject) => {
@@ -92,36 +91,43 @@ bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const youtubeUrl = msg.text;
 
-    // Check if the message is a YouTube URL
     const videoId = extractVideoId(youtubeUrl);
     if (videoId) {
         const metadataApiUrl = `https://vivekfy.vercel.app/vid?id=${videoId}`;
         try {
             await bot.sendMessage(chatId, 'Fetching metadata...');
 
-            // Fetch metadata
             const metadataResponse = await axios.get(metadataApiUrl);
             const { title, artist, thumbnail } = metadataResponse.data;
 
-            // Fetch audio and add metadata with progress reporting
             const filePath = await fetchAudio(chatId, youtubeUrl, title, artist, thumbnail);
 
-            // Send the processed file to the user with a direct download link
             await bot.sendMessage(chatId, 'Processing completed! Sending the processed audio file...');
 
-            // Send audio file via Telegram bot
             await bot.sendAudio(chatId, filePath).then(async (audioMessage) => {
                 const fileId = audioMessage.audio.file_id;
 
-                // Get the direct download link from Telegram
                 const fileInfo = await bot.getFile(fileId);
                 const directDownloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileInfo.file_path}`;
 
-                // Send direct download link to the user
-                await bot.sendMessage(chatId, `You can download the audio directly from this link: ${directDownloadUrl}`);
+                // Include title in the download link
+                const downloadUrlWithTitle = `${directDownloadUrl}?title=${encodeURIComponent(title)}`;
 
-                // Clean up after sending the file
-                fs.unlinkSync(filePath);
+                const options = {
+                    reply_markup: {
+                        inline_keyboard: [[
+                            { text: 'Download', url: downloadUrlWithTitle }
+                        ]]
+                    }
+                };
+
+                await bot.sendMessage(chatId, 'You can download the audio directly from the button below:', options);
+
+                // Set a timer to delete the file after one minute
+                setTimeout(() => {
+                    fs.unlinkSync(filePath);
+                    console.log(`File ${filePath} deleted after 1 minute.`);
+                }, 60 * 1000);
             });
 
         } catch (error) {
