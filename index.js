@@ -33,13 +33,13 @@ async function processAudioWithMetadata(apiUrl, coverUrl, title, artist, chatId)
                 .audioBitrate(48)
                 .input(coverImagePath)
                 .outputOptions([
-                    '-metadata', `title=${title}`,
-                    '-metadata', `artist=${artist}`,
-                    '-map', '0:a',
-                    '-map', '1:v',
-                    '-c:v', 'mjpeg',
-                    '-vf', "drawtext=text='Download from vivekfy':fontcolor=black:fontsize=24:x=(W-text_w)/2:y=(H-text_h)/2"
-                ])
+    '-metadata', `title=${title}`,
+    '-metadata', `artist=${artist}`,
+    '-map', '0:a',
+    '-map', '1:v',
+    '-c:v', 'mjpeg',
+    '-vf', "drawtext=text='Download from vivekfy':fontcolor=white:fontsize=24:box=1:boxcolor=black@0.9:x=(W-text_w)/2:y=(H-text_h)/2"
+])
                 .save(finalOutputName)
                 .on('progress', async (progress) => {
                     const percent = Math.round(progress.percent || 0);
