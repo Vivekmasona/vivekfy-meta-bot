@@ -33,13 +33,13 @@ async function processAudioWithMetadata(apiUrl, coverUrl, title, artist, chatId)
                 .audioBitrate(48)
                 .input(coverImagePath)
                 .outputOptions([
-    '-metadata', `title=${title}`,
-    '-metadata', `artist=${artist}`,
-    '-map', '0:a',
-    '-map', '1:v',
-    '-c:v', 'mjpeg',
-    '-vf', "drawtext=text='Download from vivekfy':fontcolor=white:fontsize=24:box=1:boxcolor=black@0.9:x=(W-text_w)/2:y=(H-text_h)/2"
-])
+                    '-metadata', `title=${title}`,
+                    '-metadata', `artist=${artist}`,
+                    '-map', '0:a',
+                    '-map', '1:v',
+                    '-c:v', 'mjpeg',
+                    '-vf', "drawtext=text='Download from vivekfy':fontcolor=white:fontsize=24:box=1:boxcolor=black@0.9:x=(W-text_w)/2:y=(H-text_h)/2"
+                ])
                 .save(finalOutputName)
                 .on('progress', async (progress) => {
                     const percent = Math.round(progress.percent || 0);
@@ -106,10 +106,22 @@ bot.on('message', async (msg) => {
             // Fetch audio and add metadata with progress reporting
             const filePath = await fetchAudio(chatId, youtubeUrl, title, artist, thumbnail);
 
-            // Send the processed file to the user
+            // Send the processed file to the user with a direct download link
             await bot.sendMessage(chatId, 'Processing completed! Sending the processed audio file...');
-            await bot.sendAudio(chatId, filePath).then(() => {
-                fs.unlinkSync(filePath); // Clean up after sending the file
+
+            // Send audio file via Telegram bot
+            await bot.sendAudio(chatId, filePath).then(async (audioMessage) => {
+                const fileId = audioMessage.audio.file_id;
+
+                // Get the direct download link from Telegram
+                const fileInfo = await bot.getFile(fileId);
+                const directDownloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileInfo.file_path}`;
+
+                // Send direct download link to the user
+                await bot.sendMessage(chatId, `You can download the audio directly from this link: ${directDownloadUrl}`);
+
+                // Clean up after sending the file
+                fs.unlinkSync(filePath);
             });
 
         } catch (error) {
