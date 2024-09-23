@@ -8,12 +8,22 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Your bot token
-const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
+const botToken = 'YOUR_BOT_TOKEN_HERE';
 const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
 const apiUrl = 'https://inv.nadeko.net/api/v1/search?q=';
 
 // Create Telegram bot instance
 const bot = new TelegramBot(botToken, { polling: true });
+
+// Function to keep the app alive
+const keepAlive = () => {
+    setInterval(() => {
+        axios.get('https://scratch-slash-saguaro.glitch.me/')
+            .then(() => console.log('Keep-alive ping successful'))
+            .catch(err => console.error('Error pinging:', err));
+    }, 4 * 60 * 1000); // 4 minutes
+};
+keepAlive();
 
 // Function to process audio and add watermark after 10 seconds
 async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId) {
@@ -223,17 +233,11 @@ bot.on('callback_query', async (callbackQuery) => {
         });
 
     } catch (error) {
-        console.error('Error fetching metadata or processing audio: ', error);
+        // Handle error
+        console.error('Error fetching metadata or processing audio:', error);
         await bot.sendMessage(chatId, 'Error processing the audio.');
     }
 });
-
-// Utility function to extract video ID from YouTube URL
-function extractVideoId(url) {
-    const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-    const match = url.match(regex);
-    return match ? match[1] : null;
-}
 
 // Start the server
 app.listen(PORT, () => {
