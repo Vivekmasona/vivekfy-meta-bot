@@ -1,3 +1,4 @@
+const http = require('http');
 const TelegramBot = require('node-telegram-bot-api');
 const fs = require('fs');
 const ffmpeg = require('fluent-ffmpeg');
@@ -8,16 +9,23 @@ const PORT = process.env.PORT || 3000;
 
 // Your bot token
 const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
+const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
 
 // Create Telegram bot instance
 const bot = new TelegramBot(botToken, { polling: true });
 
-// Function to process audio and add metadata with text overlay
-async function processAudioWithMetadata(apiUrl, coverUrl, title, artist, chatId) {
+// Function to process audio and add watermark after 10 seconds
+async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId) {
     const coverImagePath = 'cover.jpg';
-    const finalOutputName = `${title.replace(/[^a-zA-Z0-9]/g, '_')}_with_metadata.mp3`;
+    const watermarkAudioPath = 'watermark.mp3';
+    const finalOutputName = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.mp3`;
 
     try {
+        // Step 1: Download the watermark audio file
+        const watermarkAudioResponse = await axios.get(watermarkUrl, { responseType: 'arraybuffer' });
+        fs.writeFileSync(watermarkAudioPath, watermarkAudioResponse.data);
+
+        // Step 2: Download the cover image
         const coverImageResponse = await axios.get(coverUrl, { responseType: 'arraybuffer' });
         fs.writeFileSync(coverImagePath, coverImageResponse.data);
 
@@ -29,13 +37,18 @@ async function processAudioWithMetadata(apiUrl, coverUrl, title, artist, chatId)
 
             ffmpeg()
                 .input(apiUrl)
-                .audioBitrate(48)
+                .input(watermarkAudioPath)
                 .input(coverImagePath)
+                .complexFilter([
+                    '[0]volume=1[a]',  // Keep original audio volume
+                    '[1]adelay=10000|10000,volume=8.5[b]',  // Increase watermark volume
+                    '[a][b]amix=inputs=2'  // Mix original and watermark audio
+                ])
                 .outputOptions([
                     '-metadata', `title=${title}`,
                     '-metadata', `artist=${artist}`,
                     '-map', '0:a',
-                    '-map', '1:v',
+                    '-map', '2:v',
                     '-c:v', 'mjpeg',
                     '-vf', "drawtext=text='Download from vivekfy':fontcolor=white:fontsize=24:box=1:boxcolor=black@0.9:x=(W-text_w)/2:y=(H-text_h)/2"
                 ])
@@ -53,11 +66,13 @@ async function processAudioWithMetadata(apiUrl, coverUrl, title, artist, chatId)
                     }
                 })
                 .on('end', async () => {
+                    // Clean up temporary files
                     fs.unlinkSync(coverImagePath);
+                    fs.unlinkSync(watermarkAudioPath);
                     resolve(finalOutputName);
                 })
                 .on('error', (err) => {
-                    console.error('Error adding metadata: ', err);
+                    console.error('Error adding watermark: ', err);
                     reject(err);
                 });
         });
@@ -70,7 +85,7 @@ async function processAudioWithMetadata(apiUrl, coverUrl, title, artist, chatId)
 // Helper function to fetch audio from both APIs
 async function fetchAudio(chatId, youtubeUrl, title, artist, thumbnail) {
     const apiUrls = [
-        `https://vivekfy.vercel.app/stream?url=${encodeURIComponent(youtubeUrl)}`, // New API added here
+        `https://vivekfy.vercel.app/stream?url=${encodeURIComponent(youtubeUrl)}`,
         `https://vivekfy.vercel.app/vivekfy?url=${encodeURIComponent(youtubeUrl)}`,
         `https://vivekfy.vercel.app/vivekfy2?url=${encodeURIComponent(youtubeUrl)}`
     ];
@@ -79,10 +94,9 @@ async function fetchAudio(chatId, youtubeUrl, title, artist, thumbnail) {
         try {
             const apiName = apiUrl.includes('stream') ? 'stream' : (apiUrl.includes('vivekfy') ? 'Vivekfy' : 'Vivekfy2');
             await bot.sendMessage(chatId, `Using API: ${apiName}`);
-            return await processAudioWithMetadata(apiUrl, thumbnail, title, artist, chatId);
+            return await processAudioWithWatermark(apiUrl, thumbnail, title, artist, chatId);
         } catch (error) {
             console.error(`Failed to fetch audio from ${apiUrl}: ${error.message}`);
-            // Continue to the next API
         }
     }
 
@@ -113,20 +127,17 @@ bot.on('message', async (msg) => {
                 const fileInfo = await bot.getFile(fileId);
                 const directDownloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileInfo.file_path}`;
 
-                // Include title in the download link
-                const downloadUrlWithTitle = `${directDownloadUrl}?title=${encodeURIComponent(title)}`;
-
                 const options = {
                     reply_markup: {
                         inline_keyboard: [[
-                            { text: 'Download', url: downloadUrlWithTitle }
+                            { text: 'Download', url: `${directDownloadUrl}` }
                         ]]
                     }
                 };
 
                 await bot.sendMessage(chatId, 'You can download the audio directly from the button below:', options);
 
-                // Set a timer to delete the file after one minute and expire the link
+                // Set a timer to delete the file after one minute
                 setTimeout(() => {
                     fs.unlinkSync(filePath);
                     console.log(`File ${filePath} deleted after 1 minute.`);
@@ -148,6 +159,21 @@ function extractVideoId(url) {
     const match = url.match(regex);
     return match ? match[1] : null;
 }
+
+// Self-ping to prevent Glitch from sleeping
+const glitchProjectUrl = 'https://marbled-tasteful-schooner.glitch.me/';
+const keepGlitchActive = () => {
+    axios.get(glitchProjectUrl)
+        .then(response => {
+            console.log('Pinged Glitch project to keep it active.');
+        })
+        .catch(error => {
+            console.error('Error pinging Glitch project:', error);
+        });
+};
+
+// Ping the Glitch project URL every 5 minutes
+setInterval(keepGlitchActive, 300000);
 
 // Start Express server
 app.listen(PORT, () => {
