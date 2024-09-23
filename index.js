@@ -233,7 +233,6 @@ bot.on('callback_query', async (callbackQuery) => {
         });
 
     } catch (error) {
-        // Handle error
         console.error('Error fetching metadata or processing audio:', error);
         await bot.sendMessage(chatId, 'Error processing the audio.');
     }
