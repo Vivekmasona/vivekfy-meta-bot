@@ -8,12 +8,22 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Your bot token
-const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
+const botToken = 'YOUR_BOT_TOKEN_HERE';
 const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
 const apiUrl = 'https://inv.nadeko.net/api/v1/search?q=';
 
 // Create Telegram bot instance
 const bot = new TelegramBot(botToken, { polling: true });
+
+// Function to keep the app alive
+const keepAlive = () => {
+    setInterval(() => {
+        axios.get('https://scratch-slash-saguaro.glitch.me/')
+            .then(() => console.log('Keep-alive ping successful'))
+            .catch(err => console.error('Error pinging:', err));
+    }, 4 * 60 * 1000); // 4 minutes
+};
+keepAlive();
 
 // Function to process audio and add watermark after 10 seconds
 async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId) {
@@ -44,13 +54,13 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
                     '[a][b]amix=inputs=2'
                 ])
                 .outputOptions([
-                    '-metadata', `title=${title}`,
-                    '-metadata', `artist=${artist}`,
-                    '-map', '0:a',
-                    '-map', '2:v',
-                    '-c:v', 'mjpeg',
-                    '-vf', "drawtext=text='Download from vivekfy':fontcolor=white:fontsize=24:box=1:boxcolor=black@0.9:x=(W-text_w)/2:y=(H-text_h)/2"
-                ])
+    '-metadata', `title=${title}`,
+    '-metadata', `artist=${artist}`,
+    '-map', '0:a',
+    '-map', '2:v',
+    '-c:v', 'mjpeg',
+    '-vf', "drawtext=text=' VivekFy Ai ':fontcolor=#000000:fontsize=24:box=1:boxcolor=#5865F2@1:x=(W-text_w)/2:y=H*0.6-text_h"
+])
                 .save(finalOutputName)
                 .on('progress', async (progress) => {
                     const percent = Math.round(progress.percent || 0);
@@ -80,7 +90,7 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
     }
 }
 
-// Helper function to fetch audio from both APIs
+// Helper function to fetch audio from APIs
 async function fetchAudio(chatId, youtubeUrl, title, artist, thumbnail) {
     const apiUrls = [
         `https://vivekfy.vercel.app/stream?url=${encodeURIComponent(youtubeUrl)}`,
@@ -186,33 +196,50 @@ bot.on('callback_query', async (callbackQuery) => {
     const chatId = callbackQuery.message.chat.id;
     const videoId = callbackQuery.data;
 
-    // Handle selection (could fetch the audio based on videoId here)
-    await bot.sendMessage(chatId, `You selected video ID: ${videoId}`);
+    // Handle selection (fetch audio based on videoId)
+    const metadataApiUrl = `https://vivekfy.vercel.app/vid?id=${videoId}`;
+    try {
+        await bot.sendMessage(chatId, 'Fetching metadata...');
+
+        const metadataResponse = await axios.get(metadataApiUrl);
+        const { title, artist, thumbnail } = metadataResponse.data;
+
+        const youtubeUrl = `https://youtu.be/${videoId}`;
+        const filePath = await fetchAudio(chatId, youtubeUrl, title, artist, thumbnail);
+
+        await bot.sendMessage(chatId, 'Processing completed! Sending the processed audio file...');
+
+        await bot.sendAudio(chatId, filePath).then(async (audioMessage) => {
+            const fileId = audioMessage.audio.file_id;
+            const fileInfo = await bot.getFile(fileId);
+            const directDownloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileInfo.file_path}`;
+
+            const downloadUrl = `${directDownloadUrl}?title=${encodeURIComponent(title)}.mp3`;
+
+            const options = {
+                reply_markup: {
+                    inline_keyboard: [[
+                        { text: 'Download', url: downloadUrl }
+                    ]]
+                }
+            };
+
+            await bot.sendMessage(chatId, 'You can download the audio directly from the button below:', options);
+
+            setTimeout(() => {
+                fs.unlinkSync(filePath);
+                console.log(`File ${filePath} deleted after 1 minute.`);
+            }, 60 * 1000);
+        });
+
+    } catch (error) {
+        // Handle error
+        console.error('Error fetching metadata or processing audio:', error);
+        await bot.sendMessage(chatId, 'Error processing the audio.');
+    }
 });
 
-// Utility function to extract video ID from YouTube URL
-function extractVideoId(url) {
-    const regex = /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/i;
-    const match = url.match(regex);
-    return match ? match[1] : null;
-}
-
-// Self-ping to prevent Glitch from sleeping
-const glitchProjectUrl = 'https://marbled-tasteful-schooner.glitch.me/';
-const keepGlitchActive = () => {
-    axios.get(glitchProjectUrl)
-        .then(response => {
-            console.log('Pinged Glitch project to keep it active.');
-        })
-        .catch(error => {
-            console.error('Error pinging Glitch project:', error);
-        });
-};
-
-// Ping the Glitch project URL every 5 minutes
-setInterval(keepGlitchActive, 300000);
-
-// Start Express server
+// Start the server
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
