@@ -10,6 +10,7 @@ const PORT = process.env.PORT || 3000;
 // Your bot token
 const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
 const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
+const apiUrl = 'https://inv.nadeko.net/api/v1/search?q=';
 
 // Create Telegram bot instance
 const bot = new TelegramBot(botToken, { polling: true });
@@ -21,11 +22,9 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
     const finalOutputName = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.mp3`;
 
     try {
-        // Step 1: Download the watermark audio file
         const watermarkAudioResponse = await axios.get(watermarkUrl, { responseType: 'arraybuffer' });
         fs.writeFileSync(watermarkAudioPath, watermarkAudioResponse.data);
 
-        // Step 2: Download the cover image
         const coverImageResponse = await axios.get(coverUrl, { responseType: 'arraybuffer' });
         fs.writeFileSync(coverImagePath, coverImageResponse.data);
 
@@ -66,7 +65,6 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
                     }
                 })
                 .on('end', async () => {
-                    // Clean up temporary files
                     fs.unlinkSync(coverImagePath);
                     fs.unlinkSync(watermarkAudioPath);
                     resolve(finalOutputName);
@@ -103,57 +101,93 @@ async function fetchAudio(chatId, youtubeUrl, title, artist, thumbnail) {
     throw new Error('Both APIs failed to fetch audio.');
 }
 
-// Handler for text messages
-bot.on('message', async (msg) => {
-    const chatId = msg.chat.id;
-    const youtubeUrl = msg.text;
+// Function to search for songs using Invidious API
+async function searchSongs(query, chatId) {
+    try {
+        const response = await axios.get(apiUrl + encodeURIComponent(query));
+        const videos = response.data;
 
-    const videoId = extractVideoId(youtubeUrl);
-    if (videoId) {
-        const metadataApiUrl = `https://vivekfy.vercel.app/vid?id=${videoId}`;
-        try {
-            await bot.sendMessage(chatId, 'Fetching metadata...');
-
-            const metadataResponse = await axios.get(metadataApiUrl);
-            const { title, artist, thumbnail } = metadataResponse.data;
-
-            const filePath = await fetchAudio(chatId, youtubeUrl, title, artist, thumbnail);
-
-            await bot.sendMessage(chatId, 'Processing completed! Sending the processed audio file...');
-
-            await bot.sendAudio(chatId, filePath).then(async (audioMessage) => {
-                const fileId = audioMessage.audio.file_id;
-
-                const fileInfo = await bot.getFile(fileId);
-                const directDownloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileInfo.file_path}`;
-
-                // Create a download link with title
-                const downloadUrl = `${directDownloadUrl}?title=${encodeURIComponent(title)}.mp3`;
-
+        if (videos.length > 0) {
+            videos.forEach(video => {
                 const options = {
                     reply_markup: {
                         inline_keyboard: [[
-                            { text: 'Download', url: downloadUrl }
+                            { text: video.title, callback_data: video.videoId }
                         ]]
                     }
                 };
-
-                await bot.sendMessage(chatId, 'You can download the audio directly from the button below:', options);
-
-                // Set a timer to delete the file after one minute
-                setTimeout(() => {
-                    fs.unlinkSync(filePath);
-                    console.log(`File ${filePath} deleted after 1 minute.`);
-                }, 60 * 1000);
+                bot.sendMessage(chatId, 'Search results:', options);
             });
+        } else {
+            bot.sendMessage(chatId, 'No results found.');
+        }
+    } catch (error) {
+        console.error('Error fetching videos:', error);
+        bot.sendMessage(chatId, 'Failed to load videos. Please try again.');
+    }
+}
 
-        } catch (error) {
-            console.error('Error fetching metadata or processing audio: ', error);
-            await bot.sendMessage(chatId, 'Error processing the audio.');
+// Handler for text messages
+bot.on('message', async (msg) => {
+    const chatId = msg.chat.id;
+    const query = msg.text;
+
+    if (query.startsWith('http')) {
+        const videoId = extractVideoId(query);
+        if (videoId) {
+            const metadataApiUrl = `https://vivekfy.vercel.app/vid?id=${videoId}`;
+            try {
+                await bot.sendMessage(chatId, 'Fetching metadata...');
+
+                const metadataResponse = await axios.get(metadataApiUrl);
+                const { title, artist, thumbnail } = metadataResponse.data;
+
+                const filePath = await fetchAudio(chatId, query, title, artist, thumbnail);
+
+                await bot.sendMessage(chatId, 'Processing completed! Sending the processed audio file...');
+
+                await bot.sendAudio(chatId, filePath).then(async (audioMessage) => {
+                    const fileId = audioMessage.audio.file_id;
+                    const fileInfo = await bot.getFile(fileId);
+                    const directDownloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileInfo.file_path}`;
+
+                    const downloadUrl = `${directDownloadUrl}?title=${encodeURIComponent(title)}.mp3`;
+
+                    const options = {
+                        reply_markup: {
+                            inline_keyboard: [[
+                                { text: 'Download', url: downloadUrl }
+                            ]]
+                        }
+                    };
+
+                    await bot.sendMessage(chatId, 'You can download the audio directly from the button below:', options);
+
+                    setTimeout(() => {
+                        fs.unlinkSync(filePath);
+                        console.log(`File ${filePath} deleted after 1 minute.`);
+                    }, 60 * 1000);
+                });
+
+            } catch (error) {
+                console.error('Error fetching metadata or processing audio: ', error);
+                await bot.sendMessage(chatId, 'Error processing the audio.');
+            }
+        } else {
+            await bot.sendMessage(chatId, 'Please send a valid YouTube URL.');
         }
     } else {
-        await bot.sendMessage(chatId, 'Please send a valid YouTube URL.');
+        await searchSongs(query, chatId);
     }
+});
+
+// Handle callback queries for song selection
+bot.on('callback_query', async (callbackQuery) => {
+    const chatId = callbackQuery.message.chat.id;
+    const videoId = callbackQuery.data;
+
+    // Handle selection (could fetch the audio based on videoId here)
+    await bot.sendMessage(chatId, `You selected video ID: ${videoId}`);
 });
 
 // Utility function to extract video ID from YouTube URL
