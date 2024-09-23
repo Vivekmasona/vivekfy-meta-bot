@@ -8,10 +8,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Your bot token
-const botToken = 'YOUR_BOT_TOKEN_HERE';
-
-// URL of your Glitch project
-const glitchProjectUrl = 'https://marbled-tasteful-schooner.glitch.me/';
+const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
 
 // Create Telegram bot instance
 const bot = new TelegramBot(botToken, { polling: true });
@@ -19,7 +16,7 @@ const bot = new TelegramBot(botToken, { polling: true });
 // Function to process audio and add metadata with text overlay
 async function processAudioWithMetadata(apiUrl, coverUrl, title, artist, chatId) {
     const coverImagePath = 'cover.jpg';
-    const finalOutputName = `${title.replace(/[^a-zA-Z0-9]/g, '_')}_with_metadata.mp3`;
+    const finalOutputName = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.mp3`; // Cleaned title for the file name
 
     try {
         const coverImageResponse = await axios.get(coverUrl, { responseType: 'arraybuffer' });
@@ -43,7 +40,7 @@ async function processAudioWithMetadata(apiUrl, coverUrl, title, artist, chatId)
                     '-c:v', 'mjpeg',
                     '-vf', "drawtext=text='Download from vivekfy':fontcolor=white:fontsize=24:box=1:boxcolor=black@0.9:x=(W-text_w)/2:y=(H-text_h)/2"
                 ])
-                .save(finalOutputName)
+                .save(finalOutputName) // Save the audio file as title.mp3
                 .on('progress', async (progress) => {
                     const percent = Math.round(progress.percent || 0);
                     if (percent > lastReportedProgress + 5) {
@@ -116,18 +113,21 @@ bot.on('message', async (msg) => {
                 const fileInfo = await bot.getFile(fileId);
                 const directDownloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileInfo.file_path}`;
 
-                const downloadUrlWithTitle = `${directDownloadUrl}?title=${encodeURIComponent(title)}`;
+                // Now construct a URL with the title for the file:
+                const downloadFileName = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.mp3`; // Title based file name
+                const downloadUrlWithFilename = `${directDownloadUrl}?filename=${encodeURIComponent(downloadFileName)}`; // Adding filename to the URL
 
                 const options = {
                     reply_markup: {
                         inline_keyboard: [[
-                            { text: 'Download', url: downloadUrlWithTitle }
+                            { text: 'Download', url: downloadUrlWithFilename } // Link with title as filename
                         ]]
                     }
                 };
 
                 await bot.sendMessage(chatId, 'You can download the audio directly from the button below:', options);
 
+                // Set a timer to delete the file after one minute and expire the link
                 setTimeout(() => {
                     fs.unlinkSync(filePath);
                     console.log(`File ${filePath} deleted after 1 minute.`);
@@ -150,7 +150,13 @@ function extractVideoId(url) {
     return match ? match[1] : null;
 }
 
-// Ping Glitch project to keep it active
+// Self-ping to prevent Glitch from sleeping
+setInterval(() => {
+    http.get('http://your-glitch-project-name.glitch.me/');
+}, 300000); // Pings every 5 minutes (300000 milliseconds)
+
+// Function to keep Glitch project active
+const glitchProjectUrl = 'https://marbled-tasteful-schooner.glitch.me/';
 const keepGlitchActive = () => {
     axios.get(glitchProjectUrl)
         .then(response => {
@@ -160,8 +166,6 @@ const keepGlitchActive = () => {
             console.error('Error pinging Glitch project:', error);
         });
 };
-
-// Ping the Glitch project every 5 minutes (300,000 milliseconds)
 setInterval(keepGlitchActive, 300000);
 
 // Start Express server
