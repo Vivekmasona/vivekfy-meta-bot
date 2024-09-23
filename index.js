@@ -54,13 +54,13 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
                     '[a][b]amix=inputs=2'
                 ])
                 .outputOptions([
-                    '-metadata', `title=${title}`,
-                    '-metadata', `artist=${artist}`,
-                    '-map', '0:a',
-                    '-map', '2:v',
-                    '-c:v', 'mjpeg',
-                    '-vf', "drawtext=text='Download from vivekfy':fontcolor=white:fontsize=24:box=1:boxcolor=black@0.9:x=(W-text_w)/2:y=(H-text_h)/2"
-                ])
+    '-metadata', `title=${title}`,
+    '-metadata', `artist=${artist}`,
+    '-map', '0:a',
+    '-map', '2:v',
+    '-c:v', 'mjpeg',
+    '-vf', "drawtext=text=' VivekFy Ai ':fontcolor=#000000:fontsize=24:box=1:boxcolor=#5865F2@1:x=(W-text_w)/2:y=H*0.6-text_h"
+])
                 .save(finalOutputName)
                 .on('progress', async (progress) => {
                     const percent = Math.round(progress.percent || 0);
