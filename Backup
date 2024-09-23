@@ -8,21 +8,27 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Your bot token
-const botToken = 'YOUR_BOT_TOKEN_HERE';
+const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
 const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
 const apiUrl = 'https://inv.nadeko.net/api/v1/search?q=';
+const keepAliveUrl = 'https://scratch-slash-saguaro.glitch.me/';
 
 // Create Telegram bot instance
 const bot = new TelegramBot(botToken, { polling: true });
 
-// Function to keep the app alive
-const keepAlive = () => {
-    setInterval(() => {
-        axios.get('https://scratch-slash-saguaro.glitch.me/')
-            .then(() => console.log('Keep-alive ping successful'))
-            .catch(err => console.error('Error pinging:', err));
-    }, 4 * 60 * 1000); // 4 minutes
-};
+// Function to keep the project awake
+function keepAlive() {
+    setInterval(async () => {
+        try {
+            await axios.get(keepAliveUrl);
+            console.log('Pinged Glitch URL to keep the project awake.');
+        } catch (error) {
+            console.error('Error pinging Glitch URL:', error);
+        }
+    }, 240000); // 4 minutes in milliseconds
+}
+
+// Start keeping the project awake
 keepAlive();
 
 // Function to process audio and add watermark after 10 seconds
@@ -54,13 +60,13 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
                     '[a][b]amix=inputs=2'
                 ])
                 .outputOptions([
-    '-metadata', `title=${title}`,
-    '-metadata', `artist=${artist}`,
-    '-map', '0:a',
-    '-map', '2:v',
-    '-c:v', 'mjpeg',
-    '-vf', "drawtext=text=' VivekFy Ai ':fontcolor=#000000:fontsize=24:box=1:boxcolor=#5865F2@1:x=(W-text_w)/2:y=H*0.6-text_h"
-])
+                    '-metadata', `title=${title}`,
+                    '-metadata', `artist=${artist}`,
+                    '-map', '0:a',
+                    '-map', '2:v',
+                    '-c:v', 'mjpeg',
+                    '-vf', "drawtext=text='Download from vivekfy':fontcolor=white:fontsize=24:box=1:boxcolor=black@0.9:x=(W-text_w)/2:y=(H-text_h)/2"
+                ])
                 .save(finalOutputName)
                 .on('progress', async (progress) => {
                     const percent = Math.round(progress.percent || 0);
@@ -227,14 +233,13 @@ bot.on('callback_query', async (callbackQuery) => {
             await bot.sendMessage(chatId, 'You can download the audio directly from the button below:', options);
 
             setTimeout(() => {
-                fs.unlinkSync(filePath);
+                        fs.unlinkSync(filePath);
                 console.log(`File ${filePath} deleted after 1 minute.`);
             }, 60 * 1000);
         });
 
     } catch (error) {
-        // Handle error
-        console.error('Error fetching metadata or processing audio:', error);
+        console.error('Error fetching metadata or processing audio: ', error);
         await bot.sendMessage(chatId, 'Error processing the audio.');
     }
 });
