@@ -40,9 +40,9 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
                 .input(watermarkAudioPath)
                 .input(coverImagePath)
                 .complexFilter([
-                    '[0]volume=1[a]',  // Keep original audio volume
-                    '[1]adelay=10000|10000,volume=8.5[b]',  // Increase watermark volume
-                    '[a][b]amix=inputs=2'  // Mix original and watermark audio
+                    '[0]volume=1[a]',
+                    '[1]adelay=10000|10000,volume=8.5[b]',
+                    '[a][b]amix=inputs=2'
                 ])
                 .outputOptions([
                     '-metadata', `title=${title}`,
@@ -127,10 +127,13 @@ bot.on('message', async (msg) => {
                 const fileInfo = await bot.getFile(fileId);
                 const directDownloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileInfo.file_path}`;
 
+                // Create a download link with title
+                const downloadUrl = `${directDownloadUrl}?title=${encodeURIComponent(title)}.mp3`;
+
                 const options = {
                     reply_markup: {
                         inline_keyboard: [[
-                            { text: 'Download', url: `${directDownloadUrl}` }
+                            { text: 'Download', url: downloadUrl }
                         ]]
                     }
                 };
