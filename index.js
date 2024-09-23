@@ -40,7 +40,7 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
                 .input(coverImagePath)
                 .complexFilter([
                     '[0]volume=1[a]',
-                    '[1]adelay=10000|10000,volume=8.5[b]',
+                    '[1]adelay=10000|10000,volume=9.5[b]',
                     '[a][b]amix=inputs=2'
                 ])
                 .outputOptions([
@@ -49,7 +49,7 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
                     '-map', '0:a',
                     '-map', '2:v',
                     '-c:v', 'mjpeg',
-                    '-vf', "drawtext=text='Download from vivekfy':fontcolor=white:fontsize=24:box=1:boxcolor=black@0.9:x=(W-text_w)/2:y=(H-text_h)/2"
+                    '-vf', "drawtext=text='vivekFy-Ai':fontcolor=yellow:fontsize=24:box=1:boxcolor=black@0.9:x=(W-text_w)/2:y=(H-text_h)/2"
                 ])
                 .save(finalOutputName)
                 .on('progress', async (progress) => {
