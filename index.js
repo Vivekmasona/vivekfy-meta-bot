@@ -8,7 +8,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Your bot token
-const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
+const botToken = 'YOUR_BOT_TOKEN_HERE';
+
+// URL of your Glitch project
+const glitchProjectUrl = 'https://marbled-tasteful-schooner.glitch.me/';
 
 // Create Telegram bot instance
 const bot = new TelegramBot(botToken, { polling: true });
@@ -71,7 +74,7 @@ async function processAudioWithMetadata(apiUrl, coverUrl, title, artist, chatId)
 // Helper function to fetch audio from both APIs
 async function fetchAudio(chatId, youtubeUrl, title, artist, thumbnail) {
     const apiUrls = [
-        `https://vivekfy.vercel.app/stream?url=${encodeURIComponent(youtubeUrl)}`, // New API added here
+        `https://vivekfy.vercel.app/stream?url=${encodeURIComponent(youtubeUrl)}`,
         `https://vivekfy.vercel.app/vivekfy?url=${encodeURIComponent(youtubeUrl)}`,
         `https://vivekfy.vercel.app/vivekfy2?url=${encodeURIComponent(youtubeUrl)}`
     ];
@@ -83,7 +86,6 @@ async function fetchAudio(chatId, youtubeUrl, title, artist, thumbnail) {
             return await processAudioWithMetadata(apiUrl, thumbnail, title, artist, chatId);
         } catch (error) {
             console.error(`Failed to fetch audio from ${apiUrl}: ${error.message}`);
-            // Continue to the next API
         }
     }
 
@@ -114,7 +116,6 @@ bot.on('message', async (msg) => {
                 const fileInfo = await bot.getFile(fileId);
                 const directDownloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileInfo.file_path}`;
 
-                // Include title in the download link
                 const downloadUrlWithTitle = `${directDownloadUrl}?title=${encodeURIComponent(title)}`;
 
                 const options = {
@@ -127,7 +128,6 @@ bot.on('message', async (msg) => {
 
                 await bot.sendMessage(chatId, 'You can download the audio directly from the button below:', options);
 
-                // Set a timer to delete the file after one minute and expire the link
                 setTimeout(() => {
                     fs.unlinkSync(filePath);
                     console.log(`File ${filePath} deleted after 1 minute.`);
@@ -150,10 +150,19 @@ function extractVideoId(url) {
     return match ? match[1] : null;
 }
 
-// Self-ping to prevent Glitch from sleeping
-setInterval(() => {
-    http.get('http://your-glitch-project-name.glitch.me/');
-}, 300000); // Pings every 5 minutes (300000 milliseconds)
+// Ping Glitch project to keep it active
+const keepGlitchActive = () => {
+    axios.get(glitchProjectUrl)
+        .then(response => {
+            console.log('Pinged Glitch project to keep it active.');
+        })
+        .catch(error => {
+            console.error('Error pinging Glitch project:', error);
+        });
+};
+
+// Ping the Glitch project every 5 minutes (300,000 milliseconds)
+setInterval(keepGlitchActive, 300000);
 
 // Start Express server
 app.listen(PORT, () => {
