@@ -40,7 +40,7 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
                 .input(coverImagePath)
                 .complexFilter([
                     '[0]volume=1[a]',
-                    '[1]adelay=10000|10000,volume=9.5[b]',
+                    '[1]adelay=10000|10000,volume=8.5[b]',
                     '[a][b]amix=inputs=2'
                 ])
                 .outputOptions([
@@ -49,7 +49,7 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
                     '-map', '0:a',
                     '-map', '2:v',
                     '-c:v', 'mjpeg',
-                    '-vf', "drawtext=text='vivekFy-Ai':fontcolor=yellow:fontsize=24:box=1:boxcolor=black@0.9:x=(W-text_w)/2:y=(H-text_h)/2"
+                    '-vf', "drawtext=text='Download from vivekfy':fontcolor=white:fontsize=24:box=1:boxcolor=black@0.9:x=(W-text_w)/2:y=(H-text_h)/2"
                 ])
                 .save(finalOutputName)
                 .on('progress', async (progress) => {
@@ -80,7 +80,7 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
     }
 }
 
-// Helper function to fetch audio from both APIs
+// Helper function to fetch audio from APIs
 async function fetchAudio(chatId, youtubeUrl, title, artist, thumbnail) {
     const apiUrls = [
         `https://vivekfy.vercel.app/stream?url=${encodeURIComponent(youtubeUrl)}`,
@@ -186,14 +186,15 @@ bot.on('callback_query', async (callbackQuery) => {
     const chatId = callbackQuery.message.chat.id;
     const videoId = callbackQuery.data;
 
+    // Handle selection (fetch audio based on videoId)
     const metadataApiUrl = `https://vivekfy.vercel.app/vid?id=${videoId}`;
     try {
         await bot.sendMessage(chatId, 'Fetching metadata...');
 
         const metadataResponse = await axios.get(metadataApiUrl);
         const { title, artist, thumbnail } = metadataResponse.data;
-        const youtubeUrl = `https://youtu.be/${videoId}`;
 
+        const youtubeUrl = `https://youtu.be/${videoId}`;
         const filePath = await fetchAudio(chatId, youtubeUrl, title, artist, thumbnail);
 
         await bot.sendMessage(chatId, 'Processing completed! Sending the processed audio file...');
@@ -227,7 +228,14 @@ bot.on('callback_query', async (callbackQuery) => {
     }
 });
 
-// Start the Express server
+// Utility function to extract video ID from YouTube URL
+function extractVideoId(url) {
+    const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+    const match = url.match(regex);
+    return match ? match[1] : null;
+}
+
+// Start the server
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
