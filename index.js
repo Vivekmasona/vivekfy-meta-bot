@@ -9,6 +9,7 @@ const PORT = process.env.PORT || 3000;
 
 // Your bot token
 const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
+const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
 const apiUrl = 'https://invidious.nerdvpn.de/api/v1/search?q=';
 const keepAliveUrl = 'https://vivekfy-meta-bot-1.onrender.com';
 
@@ -151,20 +152,14 @@ bot.on('message', async (msg) => {
     if (query.startsWith('http')) {
         const videoId = extractVideoId(query);  // Add a helper function for extracting video ID
         if (videoId) {
-            const metadataApiUrl = `https://vivekfy.vercel.app/vid2?id=${videoId}`;
+            const metadataApiUrl = `https://vivekfy.vercel.app/vid?id=${videoId}`;
             try {
                 await bot.sendMessage(chatId, 'Fetching metadata...');
 
                 const metadataResponse = await axios.get(metadataApiUrl);
-                const { title, artist, thumbnails } = metadataResponse.data;
-                
-                // Select the best thumbnail
-                const coverUrl = thumbnails.maxres || thumbnails.hqdefault;
+                const { title, artist, thumbnail } = metadataResponse.data;
 
-                // Fetch watermark audio from the JSON data
-                const watermarkAudioUrl = metadataResponse.data.watermark.audio;
-
-                const filePath = await fetchAudio(chatId, query, title, artist, coverUrl);
+                const filePath = await fetchAudio(chatId, query, title, artist, thumbnail);
 
                 await bot.sendMessage(chatId, 'Processing completed! Sending the processed audio file...');
 
@@ -216,19 +211,15 @@ bot.on('callback_query', async (callbackQuery) => {
     const videoId = callbackQuery.data;
 
     // Handle selection (fetch audio based on videoId)
-    const metadataApiUrl = `https://vivekfy.vercel.app/vid2?id=${videoId}`;
+    const metadataApiUrl = `https://vivekfy.vercel.app/vid?id=${videoId}`;
     try {
         await bot.sendMessage(chatId, 'Fetching metadata...');
 
         const metadataResponse = await axios.get(metadataApiUrl);
-        const { title, artist, thumbnails } = metadataResponse.data;
+        const { title, artist, thumbnail } = metadataResponse.data;
 
-        // Select the best thumbnail
-        const coverUrl = thumbnails.maxres || thumbnails.hqdefault;
-        // Fetch watermark audio from the JSON data
-        const watermarkAudioUrl = metadataResponse.data.watermark.audio;
-
-        const filePath = await fetchAudio(chatId, `https://www.youtube.com/watch?v=${videoId}`, title, artist, coverUrl);
+        const youtubeUrl = `https://youtu.be/${videoId}`;
+        const filePath = await fetchAudio(chatId, youtubeUrl, title, artist, thumbnail);
 
         await bot.sendMessage(chatId, 'Processing completed! Sending the processed audio file...');
 
@@ -261,19 +252,12 @@ bot.on('callback_query', async (callbackQuery) => {
     }
 });
 
-// Start the Express server
+// Start Express server to keep the bot alive
+app.get('/', (req, res) => {
+    res.send('Bot is running');
+});
+
 app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
 
-// Handler for errors
-bot.on('polling_error', (error) => {
-    console.error('Polling error:', error);
-});
-
-// Graceful shutdown
-process.on('SIGINT', () => {
-    console.log('Shutting down gracefully...');
-    bot.stopPolling();
-    process.exit();
-});
