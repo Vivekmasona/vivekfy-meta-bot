@@ -12,6 +12,7 @@ const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
 const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
 const apiUrl = 'https://invidious.nerdvpn.de/api/v1/search?q=';
 const keepAliveUrl = 'https://vivekfy-meta-bot-1.onrender.com';
+const userLogoUrl = 'https://i.ibb.co/YDYVMPz/vivek.png'; // Your PNG image URL
 
 // Create Telegram bot instance
 const bot = new TelegramBot(botToken, { polling: true });
@@ -35,6 +36,7 @@ keepAlive();
 async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId) {
     const coverImagePath = 'cover.jpg';
     const watermarkAudioPath = 'watermark.mp3';
+    const userLogoPath = 'user_logo.png';
     const finalOutputName = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.mp3`;
 
     try {
@@ -43,6 +45,9 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
 
         const coverImageResponse = await axios.get(coverUrl, { responseType: 'arraybuffer' });
         fs.writeFileSync(coverImagePath, coverImageResponse.data);
+
+        const userLogoResponse = await axios.get(userLogoUrl, { responseType: 'arraybuffer' });
+        fs.writeFileSync(userLogoPath, userLogoResponse.data);
 
         await bot.sendMessage(chatId, 'Processing audio... Please wait while we process your file.');
 
@@ -54,10 +59,12 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
                 .input(apiUrl)
                 .input(watermarkAudioPath)
                 .input(coverImagePath)
+                .input(userLogoPath)
                 .complexFilter([
                     '[0]volume=1[a]',
                     '[1]adelay=10000|10000,volume=8.5[b]',
-                    '[a][b]amix=inputs=2'
+                    '[a][b]amix=inputs=2',
+                    '[2]overlay=W-w-10:H-h-10' // Adds your logo to bottom-left
                 ])
                 .outputOptions([
                     '-metadata', `title=${title}`,
@@ -83,6 +90,7 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
                 .on('end', async () => {
                     fs.unlinkSync(coverImagePath);
                     fs.unlinkSync(watermarkAudioPath);
+                    fs.unlinkSync(userLogoPath);
                     resolve(finalOutputName);
                 })
                 .on('error', (err) => {
@@ -210,15 +218,16 @@ bot.on('callback_query', async (callbackQuery) => {
     const chatId = callbackQuery.message.chat.id;
     const videoId = callbackQuery.data;
 
-    // Handle selection (fetch audio based on videoId)
+    // Handle selection (fetch audio based on video)
     const metadataApiUrl = `https://vivekfy.vercel.app/vid?id=${videoId}`;
+
     try {
         await bot.sendMessage(chatId, 'Fetching metadata...');
 
         const metadataResponse = await axios.get(metadataApiUrl);
         const { title, artist, thumbnail } = metadataResponse.data;
 
-        const youtubeUrl = `https://youtu.be/${videoId}`;
+        const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
         const filePath = await fetchAudio(chatId, youtubeUrl, title, artist, thumbnail);
 
         await bot.sendMessage(chatId, 'Processing completed! Sending the processed audio file...');
@@ -240,6 +249,7 @@ bot.on('callback_query', async (callbackQuery) => {
 
             await bot.sendMessage(chatId, 'You can download the audio directly from the button below:', options);
 
+            // Delete the file after 1 minute to save space
             setTimeout(() => {
                 fs.unlinkSync(filePath);
                 console.log(`File ${filePath} deleted after 1 minute.`);
@@ -252,11 +262,12 @@ bot.on('callback_query', async (callbackQuery) => {
     }
 });
 
-// Start Express server to keep the bot alive
+// Express API to keep the server alive
 app.get('/', (req, res) => {
-    res.send('Bot is running');
+    res.send('The bot is running.');
 });
 
+// Start Express server
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`Server is running on port ${PORT}`);
 });
