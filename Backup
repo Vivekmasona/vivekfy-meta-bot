@@ -10,8 +10,8 @@ const PORT = process.env.PORT || 3000;
 // Your bot token
 const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
 const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
-const apiUrl = 'https://inv.nadeko.net/api/v1/search?q=';
-const keepAliveUrl = 'https://scratch-slash-saguaro.glitch.me/';
+const apiUrl = 'https://invidious.nerdvpn.de/api/v1/search?q=';
+const keepAliveUrl = 'https://vivekfy-meta-bot-1.onrender.com';
 
 // Create Telegram bot instance
 const bot = new TelegramBot(botToken, { polling: true });
@@ -65,7 +65,7 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
                     '-map', '0:a',
                     '-map', '2:v',
                     '-c:v', 'mjpeg',
-                    '-vf', "drawtext=text='Download from vivekfy':fontcolor=white:fontsize=24:box=1:boxcolor=black@0.9:x=(W-text_w)/2:y=H*0.4-text_h"
+                    '-vf', "drawtext=text='Download from vivekfy':fontcolor=#000000:fontsize=34:box=1:boxcolor=#ffffff@0.6:x=(W-text_w)/2:y=H*0.8-text_h"
                 ])
                 .save(finalOutputName)
                 .on('progress', async (progress) => {
@@ -260,3 +260,4 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
+
