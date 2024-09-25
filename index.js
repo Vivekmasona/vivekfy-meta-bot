@@ -12,7 +12,6 @@ const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
 const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
 const apiUrl = 'https://invidious.nerdvpn.de/api/v1/search?q=';
 const keepAliveUrl = 'https://vivekfy-meta-bot-1.onrender.com';
-const overlayImageUrl = 'https://i.ibb.co/YDYVMPz/vivek.png'; // Your PNG overlay URL
 
 // Create Telegram bot instance
 const bot = new TelegramBot(botToken, { polling: true });
@@ -36,7 +35,6 @@ keepAlive();
 async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId) {
     const coverImagePath = 'cover.jpg';
     const watermarkAudioPath = 'watermark.mp3';
-    const overlayImagePath = 'overlay.png'; // Path for the overlay image
     const finalOutputName = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.mp3`;
 
     try {
@@ -45,9 +43,6 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
 
         const coverImageResponse = await axios.get(coverUrl, { responseType: 'arraybuffer' });
         fs.writeFileSync(coverImagePath, coverImageResponse.data);
-
-        const overlayImageResponse = await axios.get(overlayImageUrl, { responseType: 'arraybuffer' });
-        fs.writeFileSync(overlayImagePath, overlayImageResponse.data); // Save overlay image
 
         await bot.sendMessage(chatId, 'Processing audio... Please wait while we process your file.');
 
@@ -59,20 +54,18 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
                 .input(apiUrl)
                 .input(watermarkAudioPath)
                 .input(coverImagePath)
-                .input(overlayImagePath) // Input overlay image
                 .complexFilter([
                     '[0]volume=1[a]',
                     '[1]adelay=10000|10000,volume=8.5[b]',
-                    '[2:v]scale=320:-1[ov];[a][b]amix=inputs=2',
-                    '[ov]drawtext=text=\'Download from vivekfy\':fontcolor=#000000:fontsize=34:box=1:boxcolor=#ffffff@0.6:x=(W-text_w)/2:y=H*0.8-text_h',
-                    '[3:v]overlay=W-w-10:H-h-10' // Overlay PNG image on bottom right
+                    '[a][b]amix=inputs=2'
                 ])
                 .outputOptions([
                     '-metadata', `title=${title}`,
                     '-metadata', `artist=${artist}`,
                     '-map', '0:a',
-                    '-map', '3:v', // Map overlay video
+                    '-map', '2:v',
                     '-c:v', 'mjpeg',
+                    '-vf', "drawtext=text='Download from vivekfy':fontcolor=#000000:fontsize=34:box=1:boxcolor=#ffffff@0.6:x=(W-text_w)/2:y=H*0.8-text_h"
                 ])
                 .save(finalOutputName)
                 .on('progress', async (progress) => {
@@ -89,7 +82,6 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
                 })
                 .on('end', async () => {
                     fs.unlinkSync(coverImagePath);
-                    fs.unlinkSync(overlayImagePath); // Clean up overlay image
                     fs.unlinkSync(watermarkAudioPath);
                     resolve(finalOutputName);
                 })
@@ -206,30 +198,28 @@ bot.on('message', async (msg) => {
     }
 });
 
-// Extract video ID from a YouTube URL
+// Function to extract video ID from a YouTube URL
+function extractVideoId(url) {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|youtu.be\/|\/v\/)([^#&?]*).*/;
     const match = url.match(regExp);
-    return match ? match[2] : null;
+    return match && match[2].length === 11 ? match[2] : null;
 }
 
-// Start the server
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-});
-
-// Handle inline button callback queries
+// Handle callback queries for song selection
 bot.on('callback_query', async (callbackQuery) => {
     const chatId = callbackQuery.message.chat.id;
     const videoId = callbackQuery.data;
 
+    // Handle selection (fetch audio based on videoId)
+    const metadataApiUrl = `https://vivekfy.vercel.app/vid?id=${videoId}`;
     try {
-        const metadataApiUrl = `https://vivekfy.vercel.app/vid?id=${videoId}`;
         await bot.sendMessage(chatId, 'Fetching metadata...');
 
         const metadataResponse = await axios.get(metadataApiUrl);
         const { title, artist, thumbnail } = metadataResponse.data;
 
-        const filePath = await fetchAudio(chatId, `https://www.youtube.com/watch?v=${videoId}`, title, artist, thumbnail);
+        const youtubeUrl = `https://youtu.be/${videoId}`;
+        const filePath = await fetchAudio(chatId, youtubeUrl, title, artist, thumbnail);
 
         await bot.sendMessage(chatId, 'Processing completed! Sending the processed audio file...');
 
@@ -262,7 +252,12 @@ bot.on('callback_query', async (callbackQuery) => {
     }
 });
 
-// Handle errors
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+// Start Express server to keep the bot alive
+app.get('/', (req, res) => {
+    res.send('Bot is running');
 });
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
+
