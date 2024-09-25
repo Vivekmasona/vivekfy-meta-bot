@@ -12,7 +12,7 @@ const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
 const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
 const apiUrl = 'https://invidious.nerdvpn.de/api/v1/search?q=';
 const keepAliveUrl = 'https://vivekfy-meta-bot-1.onrender.com';
-const overlayImageUrl = 'https://i.ibb.co/YDYVMPz/vivek.png'; // Your PNG overlay image URL
+const overlayImageUrl = 'https://i.ibb.co/YDYVMPz/vivek.png'; // Your PNG overlay URL
 
 // Create Telegram bot instance
 const bot = new TelegramBot(botToken, { polling: true });
@@ -36,7 +36,7 @@ keepAlive();
 async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId) {
     const coverImagePath = 'cover.jpg';
     const watermarkAudioPath = 'watermark.mp3';
-    const overlayImagePath = 'overlay.png'; // Path for overlay image
+    const overlayImagePath = 'overlay.png'; // Path for the overlay image
     const finalOutputName = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.mp3`;
 
     try {
@@ -47,7 +47,7 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
         fs.writeFileSync(coverImagePath, coverImageResponse.data);
 
         const overlayImageResponse = await axios.get(overlayImageUrl, { responseType: 'arraybuffer' });
-        fs.writeFileSync(overlayImagePath, overlayImageResponse.data);
+        fs.writeFileSync(overlayImagePath, overlayImageResponse.data); // Save overlay image
 
         await bot.sendMessage(chatId, 'Processing audio... Please wait while we process your file.');
 
@@ -59,21 +59,20 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
                 .input(apiUrl)
                 .input(watermarkAudioPath)
                 .input(coverImagePath)
-                .input(overlayImagePath) // Adding overlay image
+                .input(overlayImagePath) // Input overlay image
                 .complexFilter([
                     '[0]volume=1[a]',
                     '[1]adelay=10000|10000,volume=8.5[b]',
-                    '[a][b]amix=inputs=2',
-                    // Overlay the image at specified position (x=10, y=H-h-10 for bottom left corner)
-                    '[2]scale=100:100[overlay];[0][overlay]overlay=x=10:y=H-h-10'
+                    '[2:v]scale=320:-1[ov];[a][b]amix=inputs=2',
+                    '[ov]drawtext=text=\'Download from vivekfy\':fontcolor=#000000:fontsize=34:box=1:boxcolor=#ffffff@0.6:x=(W-text_w)/2:y=H*0.8-text_h',
+                    '[3:v]overlay=W-w-10:H-h-10' // Overlay PNG image on bottom right
                 ])
                 .outputOptions([
                     '-metadata', `title=${title}`,
                     '-metadata', `artist=${artist}`,
                     '-map', '0:a',
-                    '-map', '2:v',
+                    '-map', '3:v', // Map overlay video
                     '-c:v', 'mjpeg',
-                    '-vf', "drawtext=text='Download from vivekfy':fontcolor=#000000:fontsize=34:box=1:boxcolor=#ffffff@0.6:x=(W-text_w)/2:y=H*0.8-text_h"
                 ])
                 .save(finalOutputName)
                 .on('progress', async (progress) => {
@@ -90,8 +89,8 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
                 })
                 .on('end', async () => {
                     fs.unlinkSync(coverImagePath);
+                    fs.unlinkSync(overlayImagePath); // Clean up overlay image
                     fs.unlinkSync(watermarkAudioPath);
-                    fs.unlinkSync(overlayImagePath); // Delete overlay image after processing
                     resolve(finalOutputName);
                 })
                 .on('error', (err) => {
@@ -207,28 +206,30 @@ bot.on('message', async (msg) => {
     }
 });
 
-// Function to extract video ID from a YouTube URL
-function extractVideoId(url) {
+// Extract video ID from a YouTube URL
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|youtu.be\/|\/v\/)([^#&?]*).*/;
     const match = url.match(regExp);
-    return match && match[2].length === 11 ? match[2] : null;
+    return match ? match[2] : null;
 }
 
-// Handle callback queries (user clicks on a song title)
+// Start the server
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
+
+// Handle inline button callback queries
 bot.on('callback_query', async (callbackQuery) => {
     const chatId = callbackQuery.message.chat.id;
     const videoId = callbackQuery.data;
 
-    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    const metadataApiUrl = `https://vivekfy.vercel.app/vid?id=${videoId}`;
-
     try {
+        const metadataApiUrl = `https://vivekfy.vercel.app/vid?id=${videoId}`;
         await bot.sendMessage(chatId, 'Fetching metadata...');
 
         const metadataResponse = await axios.get(metadataApiUrl);
         const { title, artist, thumbnail } = metadataResponse.data;
 
-        const filePath = await fetchAudio(chatId, videoUrl, title, artist, thumbnail);
+        const filePath = await fetchAudio(chatId, `https://www.youtube.com/watch?v=${videoId}`, title, artist, thumbnail);
 
         await bot.sendMessage(chatId, 'Processing completed! Sending the processed audio file...');
 
@@ -261,7 +262,7 @@ bot.on('callback_query', async (callbackQuery) => {
     }
 });
 
-// Start the Express server
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+// Handle errors
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
