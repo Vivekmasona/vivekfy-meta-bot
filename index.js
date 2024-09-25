@@ -12,7 +12,7 @@ const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
 const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
 const apiUrl = 'https://invidious.nerdvpn.de/api/v1/search?q=';
 const keepAliveUrl = 'https://vivekfy-meta-bot-1.onrender.com';
-const userLogoUrl = 'https://i.ibb.co/YDYVMPz/vivek.png'; // Your PNG image URL
+const overlayImageUrl = 'https://i.ibb.co/YDYVMPz/vivek.png'; // Your PNG overlay image URL
 
 // Create Telegram bot instance
 const bot = new TelegramBot(botToken, { polling: true });
@@ -36,7 +36,7 @@ keepAlive();
 async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId) {
     const coverImagePath = 'cover.jpg';
     const watermarkAudioPath = 'watermark.mp3';
-    const userLogoPath = 'user_logo.png';
+    const overlayImagePath = 'overlay.png'; // Path for overlay image
     const finalOutputName = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.mp3`;
 
     try {
@@ -46,8 +46,8 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
         const coverImageResponse = await axios.get(coverUrl, { responseType: 'arraybuffer' });
         fs.writeFileSync(coverImagePath, coverImageResponse.data);
 
-        const userLogoResponse = await axios.get(userLogoUrl, { responseType: 'arraybuffer' });
-        fs.writeFileSync(userLogoPath, userLogoResponse.data);
+        const overlayImageResponse = await axios.get(overlayImageUrl, { responseType: 'arraybuffer' });
+        fs.writeFileSync(overlayImagePath, overlayImageResponse.data);
 
         await bot.sendMessage(chatId, 'Processing audio... Please wait while we process your file.');
 
@@ -59,12 +59,13 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
                 .input(apiUrl)
                 .input(watermarkAudioPath)
                 .input(coverImagePath)
-                .input(userLogoPath)
+                .input(overlayImagePath) // Adding overlay image
                 .complexFilter([
                     '[0]volume=1[a]',
                     '[1]adelay=10000|10000,volume=8.5[b]',
                     '[a][b]amix=inputs=2',
-                    '[2]overlay=W-w-10:H-h-10' // Adds your logo to bottom-left
+                    // Overlay the image at specified position (x=10, y=H-h-10 for bottom left corner)
+                    '[2]scale=100:100[overlay];[0][overlay]overlay=x=10:y=H-h-10'
                 ])
                 .outputOptions([
                     '-metadata', `title=${title}`,
@@ -90,7 +91,7 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
                 .on('end', async () => {
                     fs.unlinkSync(coverImagePath);
                     fs.unlinkSync(watermarkAudioPath);
-                    fs.unlinkSync(userLogoPath);
+                    fs.unlinkSync(overlayImagePath); // Delete overlay image after processing
                     resolve(finalOutputName);
                 })
                 .on('error', (err) => {
@@ -213,12 +214,12 @@ function extractVideoId(url) {
     return match && match[2].length === 11 ? match[2] : null;
 }
 
-// Handle callback queries for song selection
+// Handle callback queries (user clicks on a song title)
 bot.on('callback_query', async (callbackQuery) => {
     const chatId = callbackQuery.message.chat.id;
     const videoId = callbackQuery.data;
 
-    // Handle selection (fetch audio based on video)
+    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const metadataApiUrl = `https://vivekfy.vercel.app/vid?id=${videoId}`;
 
     try {
@@ -227,8 +228,7 @@ bot.on('callback_query', async (callbackQuery) => {
         const metadataResponse = await axios.get(metadataApiUrl);
         const { title, artist, thumbnail } = metadataResponse.data;
 
-        const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
-        const filePath = await fetchAudio(chatId, youtubeUrl, title, artist, thumbnail);
+        const filePath = await fetchAudio(chatId, videoUrl, title, artist, thumbnail);
 
         await bot.sendMessage(chatId, 'Processing completed! Sending the processed audio file...');
 
@@ -249,7 +249,6 @@ bot.on('callback_query', async (callbackQuery) => {
 
             await bot.sendMessage(chatId, 'You can download the audio directly from the button below:', options);
 
-            // Delete the file after 1 minute to save space
             setTimeout(() => {
                 fs.unlinkSync(filePath);
                 console.log(`File ${filePath} deleted after 1 minute.`);
@@ -262,12 +261,7 @@ bot.on('callback_query', async (callbackQuery) => {
     }
 });
 
-// Express API to keep the server alive
-app.get('/', (req, res) => {
-    res.send('The bot is running.');
-});
-
-// Start Express server
+// Start the Express server
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
