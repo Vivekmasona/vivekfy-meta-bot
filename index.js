@@ -138,8 +138,8 @@ async function searchSongs(query, chatId) {
             bot.sendMessage(chatId, 'No results found.');
         }
     } catch (error) {
-        console.error('Error fetching videos:', error);
-        bot.sendMessage(chatId, 'Failed to load videos. Please try again.');
+        console.error('Error fetching:', error);
+        bot.sendMessage(chatId, 'Please try again.');
     }
 }
 
