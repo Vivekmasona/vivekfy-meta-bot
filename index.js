@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 3000;
 // Your bot token
 const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
 const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
-const apiUrl = 'https://invidious.nerdvpn.de/api/v1/search?q=';
+const apiUrl = 'https://inv.nadeko.net/api/v1/search?q=';
 const keepAliveUrl = 'https://vivekfy-meta-bot-1.onrender.com';
 
 // Create Telegram bot instance
