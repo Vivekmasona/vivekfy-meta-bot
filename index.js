@@ -99,14 +99,14 @@ async function processAudioWithWatermark(apiUrl, coverUrl, title, artist, chatId
 // Helper function to fetch audio from APIs
 async function fetchAudio(chatId, youtubeUrl, title, artist, thumbnail) {
     const apiUrls = [
-        `https://vivekfy.vercel.app/stream?url=${encodeURIComponent(youtubeUrl)}`,
+        `https://vivekfy.vercel.app/vivekfy?url=${encodeURIComponent(youtubeUrl)}`,
         `https://vivekfy.vercel.app/vivekfy?url=${encodeURIComponent(youtubeUrl)}`,
         `https://vivekfy.vercel.app/vivekfy2?url=${encodeURIComponent(youtubeUrl)}`
     ];
 
     for (const apiUrl of apiUrls) {
         try {
-            const apiName = apiUrl.includes('stream') ? 'stream' : (apiUrl.includes('vivekfy') ? 'Vivekfy' : 'Vivekfy2');
+            const apiName = apiUrl.includes('stream') ? 'vivekfy-server' : (apiUrl.includes('vivekfy') ? 'Vivekfy' : 'Vivekfy2');
             await bot.sendMessage(chatId, `Using API: ${apiName}`);
             return await processAudioWithWatermark(apiUrl, thumbnail, title, artist, chatId);
         } catch (error) {
