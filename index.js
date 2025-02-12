@@ -1,62 +1,96 @@
+const http = require('http');
 const TelegramBot = require('node-telegram-bot-api');
-const express = require('express');
-const axios = require('axios');
 const fs = require('fs');
 const ffmpeg = require('fluent-ffmpeg');
-
+const axios = require('axios');
+const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Bot & API Configurations
+// Bot Token
 const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
 const youtubeApiKey = 'AIzaSyBfsNcJJHd-O0ftUzH2KqIRc_KhXgPXne0';
+
+// API URLs
+const koyebApiAudio = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/play?url=';
+const koyebApiJson = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/json?url=';
+
+// Watermark URL
 const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
 
-// Audio Fetching URLs
-const audioJsonApi = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/json?url=';
-const audioDirectApi = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/play?url=';
-
-// Start Telegram Bot
+// Bot instance
 const bot = new TelegramBot(botToken, { polling: true });
 
-// Function to get video metadata from YouTube API
-async function fetchYouTubeMetadata(videoId) {
+/**
+ * **YouTube Video Search using YouTube Data API v3**
+ */
+async function searchYouTube(query, chatId) {
     try {
-        const url = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&key=${youtubeApiKey}&part=snippet`;
-        const response = await axios.get(url);
-        const video = response.data.items[0];
+        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=5&q=${encodeURIComponent(query)}&key=${youtubeApiKey}`;
+        const response = await axios.get(searchUrl);
+        const videos = response.data.items;
+
+        if (videos.length > 0) {
+            const options = {
+                reply_markup: {
+                    inline_keyboard: videos.map(video => [{
+                        text: video.snippet.title,
+                        callback_data: video.id.videoId
+                    }])
+                }
+            };
+            await bot.sendMessage(chatId, '🔍 Search Results:', options);
+        } else {
+            await bot.sendMessage(chatId, '❌ No results found.');
+        }
+    } catch (error) {
+        console.error('Error searching YouTube:', error);
+        await bot.sendMessage(chatId, '⚠️ Try again.');
+    }
+}
+
+/**
+ * **Extract YouTube Video Metadata**
+ */
+async function getYouTubeMetadata(videoId) {
+    try {
+        const metadataUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${youtubeApiKey}`;
+        const response = await axios.get(metadataUrl);
+        const video = response.data.items[0].snippet;
 
         return {
-            title: video.snippet.title,
-            artist: video.snippet.channelTitle,
-            thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
+            title: video.title,
+            artist: video.channelTitle,
+            thumbnail: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`
         };
     } catch (error) {
-        console.error('Error fetching YouTube metadata:', error);
+        console.error('Error fetching metadata:', error);
         return null;
     }
 }
 
-// Function to process audio and add watermark
-async function processAudioWithWatermark(audioUrl, thumbnail, title, artist, chatId) {
-    const watermarkPath = 'watermark.mp3';
-    const coverPath = 'cover.jpg';
-    const outputFile = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.mp3`;
+/**
+ * **Process Audio with Watermark**
+ */
+async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chatId) {
+    const coverImagePath = 'cover.jpg';
+    const watermarkAudioPath = 'watermark.mp3';
+    const finalOutputName = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.mp3`;
 
     try {
-        const watermarkRes = await axios.get(watermarkUrl, { responseType: 'arraybuffer' });
-        fs.writeFileSync(watermarkPath, watermarkRes.data);
+        const watermarkAudioResponse = await axios.get(watermarkUrl, { responseType: 'arraybuffer' });
+        fs.writeFileSync(watermarkAudioPath, watermarkAudioResponse.data);
 
-        const coverRes = await axios.get(thumbnail, { responseType: 'arraybuffer' });
-        fs.writeFileSync(coverPath, coverRes.data);
+        const coverImageResponse = await axios.get(coverUrl, { responseType: 'arraybuffer' });
+        fs.writeFileSync(coverImagePath, coverImageResponse.data);
 
-        await bot.sendMessage(chatId, 'Processing audio...');
+        await bot.sendMessage(chatId, '⏳ Processing audio...');
 
         return new Promise((resolve, reject) => {
             ffmpeg()
                 .input(audioUrl)
-                .input(watermarkPath)
-                .input(coverPath)
+                .input(watermarkAudioPath)
+                .input(coverImagePath)
                 .complexFilter([
                     '[0]volume=1[a]',
                     '[1]adelay=10000|10000,volume=8.5[b]',
@@ -70,85 +104,53 @@ async function processAudioWithWatermark(audioUrl, thumbnail, title, artist, cha
                     '-c:v', 'mjpeg',
                     '-vf', "drawtext=text='Download from vivekfy':fontcolor=#000000:fontsize=34:box=1:boxcolor=#ffffff@0.6:x=(W-text_w)/2:y=H*0.8-text_h"
                 ])
-                .save(outputFile)
-                .on('end', () => {
-                    fs.unlinkSync(coverPath);
-                    fs.unlinkSync(watermarkPath);
-                    resolve(outputFile);
+                .save(finalOutputName)
+                .on('end', async () => {
+                    fs.unlinkSync(coverImagePath);
+                    fs.unlinkSync(watermarkAudioPath);
+                    resolve(finalOutputName);
                 })
-                .on('error', reject);
+                .on('error', (err) => {
+                    console.error('Error adding watermark:', err);
+                    reject(err);
+                });
         });
     } catch (error) {
-        console.error('Error processing audio:', error);
-        throw new Error('Failed to process audio.');
+        console.error('Error:', error);
+        throw new Error('Error processing audio.');
     }
 }
 
-// Function to fetch and process audio
-async function fetchAudio(chatId, youtubeUrl, title, artist, thumbnail) {
+/**
+ * **Fetch and Process Audio**
+ */
+async function fetchAndProcessAudio(chatId, videoId) {
     try {
-        const response = await axios.get(audioJsonApi + encodeURIComponent(youtubeUrl));
-        const audioUrl = response.data.audio_url;
+        const metadata = await getYouTubeMetadata(videoId);
+        if (!metadata) throw new Error('Metadata fetch failed');
 
-        if (!audioUrl) throw new Error('Audio URL not found in JSON response.');
+        const audioJsonUrl = koyebApiJson + encodeURIComponent(`https://youtu.be/${videoId}`);
+        const audioJsonResponse = await axios.get(audioJsonUrl);
+        const audioUrl = audioJsonResponse.data.audio_url;
 
-        const filePath = await processAudioWithWatermark(audioUrl, thumbnail, title, artist, chatId);
+        if (!audioUrl) throw new Error('No audio URL found');
 
-        await bot.sendMessage(chatId, 'Processing complete! Sending audio...');
+        const processedFilePath = await processAudioWithWatermark(audioUrl, metadata.thumbnail, metadata.title, metadata.artist, chatId);
+        await bot.sendAudio(chatId, processedFilePath);
 
-        await bot.sendAudio(chatId, filePath).then(async (audioMessage) => {
-            const fileId = audioMessage.audio.file_id;
-            const fileInfo = await bot.getFile(fileId);
-            const downloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileInfo.file_path}`;
-
-            const options = {
-                reply_markup: {
-                    inline_keyboard: [[
-                        { text: 'Download', url: downloadUrl }
-                    ]]
-                }
-            };
-
-            await bot.sendMessage(chatId, 'Download audio:', options);
-
-            setTimeout(() => {
-                fs.unlinkSync(filePath);
-                console.log(`File ${filePath} deleted.`);
-            }, 60000);
-        });
-
+        setTimeout(() => {
+            fs.unlinkSync(processedFilePath);
+            console.log(`File ${processedFilePath} deleted.`);
+        }, 60 * 1000);
     } catch (error) {
-        console.error('Error fetching or processing audio:', error);
-        await bot.sendMessage(chatId, 'Failed to process audio.');
+        console.error('Error fetching audio:', error);
+        await bot.sendMessage(chatId, '❌ Error processing audio.');
     }
 }
 
-// YouTube Search using v3 API
-async function searchYouTube(query, chatId) {
-    try {
-        const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&key=${youtubeApiKey}&maxResults=5&type=video`;
-        const response = await axios.get(url);
-        const videos = response.data.items;
-
-        if (videos.length > 0) {
-            const options = {
-                reply_markup: {
-                    inline_keyboard: videos.map(video => ([
-                        { text: video.snippet.title, callback_data: video.id.videoId }
-                    ]))
-                }
-            };
-            bot.sendMessage(chatId, 'Search results:', options);
-        } else {
-            bot.sendMessage(chatId, 'No results found.');
-        }
-    } catch (error) {
-        console.error('Error searching YouTube:', error);
-        bot.sendMessage(chatId, 'Error while searching.');
-    }
-}
-
-// Handle messages
+/**
+ * **Handle Messages**
+ */
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const query = msg.text;
@@ -156,41 +158,43 @@ bot.on('message', async (msg) => {
     if (query.startsWith('http')) {
         const videoId = extractVideoId(query);
         if (videoId) {
-            const metadata = await fetchYouTubeMetadata(videoId);
-            if (metadata) {
-                await fetchAudio(chatId, query, metadata.title, metadata.artist, metadata.thumbnail);
-            } else {
-                bot.sendMessage(chatId, 'Could not fetch video details.');
-            }
+            await bot.sendMessage(chatId, '🔍 Fetching details...');
+            await fetchAndProcessAudio(chatId, videoId);
         } else {
-            bot.sendMessage(chatId, 'Invalid YouTube URL.');
+            await bot.sendMessage(chatId, '❌ Invalid YouTube URL.');
         }
     } else {
         await searchYouTube(query, chatId);
     }
 });
 
-// Extract YouTube Video ID
+/**
+ * **Extract Video ID from URL**
+ */
 function extractVideoId(url) {
-    const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:.*v=|.*\/|.*=|.*\?v=|.*&v=))([\w-]{11})/);
-    return match ? match[1] : null;
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|youtu.be\/|\/v\/)([^#&?]*).*/;
+    const match = url.match(regExp);
+    return match && match[2].length === 11 ? match[2] : null;
 }
 
-// Handle callback queries
+/**
+ * **Handle Callback Query (Search Selection)**
+ */
 bot.on('callback_query', async (callbackQuery) => {
     const chatId = callbackQuery.message.chat.id;
     const videoId = callbackQuery.data;
 
-    const metadata = await fetchYouTubeMetadata(videoId);
-    if (metadata) {
-        const youtubeUrl = `https://youtu.be/${videoId}`;
-        await fetchAudio(chatId, youtubeUrl, metadata.title, metadata.artist, metadata.thumbnail);
-    } else {
-        bot.sendMessage(chatId, 'Error fetching video details.');
-    }
+    await bot.sendMessage(chatId, '🔍 Fetching details...');
+    await fetchAndProcessAudio(chatId, videoId);
 });
 
-// Express server to keep bot alive
-app.get('/', (req, res) => res.send('Bot is running'));
+/**
+ * **Express Server (Keep Bot Alive)**
+ */
+app.get('/', (req, res) => {
+    res.send('🤖 Bot is running...');
+});
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+});
