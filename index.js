@@ -7,24 +7,69 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Bot Token
+// Bot Token & API Key (Replace with your own)
 const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
 const youtubeApiKey = 'AIzaSyBfsNcJJHd-O0ftUzH2KqIRc_KhXgPXne0';
 
-// Multiple Audio API URLs (jitne chaho add kar sakte ho)
-const audioApis = [
-    'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/json?url=',
-    'https://vivekfy.vercel.app/json?url=',
-];
+// API URLs
+const koyebApiAudio = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/play?url=';
+const koyebApiJson = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/json?url=';
 
 // Watermark URL
 const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
 
+// Keep-Alive URL (Fixed)
+const keepAliveUrl = 'https://vivekfy-meta-bot-1.onrender.com';
+
 // Bot instance
 const bot = new TelegramBot(botToken, { polling: true });
 
+// Keep bot awake
+function keepAlive() {
+    setInterval(async () => {
+        try {
+            await axios.get(keepAliveUrl);
+            console.log('Pinged Render URL to keep the bot awake.');
+        } catch (error) {
+            console.error('Error pinging keep-alive URL:', error);
+        }
+    }, 240000); // 4 minutes
+}
+keepAlive();
+
+// Store ping URLs
+let pingUrls = [];
+
 /**
- * **YouTube Video Metadata Fetch**
+ * **YouTube Video Search**
+ */
+async function searchYouTube(query, chatId) {
+    try {
+        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=5&q=${encodeURIComponent(query)}&key=${youtubeApiKey}`;
+        const response = await axios.get(searchUrl);
+        const videos = response.data.items;
+
+        if (videos.length > 0) {
+            const options = {
+                reply_markup: {
+                    inline_keyboard: videos.map(video => [{
+                        text: video.snippet.title,
+                        callback_data: video.id.videoId
+                    }])
+                }
+            };
+            await bot.sendMessage(chatId, '🔍 Search Results:', options);
+        } else {
+            await bot.sendMessage(chatId, '❌ No results found.');
+        }
+    } catch (error) {
+        console.error('Error searching YouTube:', error);
+        await bot.sendMessage(chatId, '⚠️ Try again.');
+    }
+}
+
+/**
+ * **Get YouTube Metadata**
  */
 async function getYouTubeMetadata(videoId) {
     try {
@@ -33,8 +78,8 @@ async function getYouTubeMetadata(videoId) {
         const video = response.data.items[0].snippet;
 
         return {
-            title: `${video.title} - Vivekfy`,
-            artist: `${video.channelTitle} + vfy.ai`,
+            title: video.title,
+            artist: video.channelTitle,
             thumbnail: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`
         };
     } catch (error) {
@@ -44,27 +89,9 @@ async function getYouTubeMetadata(videoId) {
 }
 
 /**
- * **Fetch Audio URL from Multiple APIs**
- */
-async function getAudioUrl(videoId) {
-    for (let i = 0; i < audioApis.length; i++) {
-        try {
-            const audioJsonUrl = audioApis[i] + encodeURIComponent(`https://youtu.be/${videoId}`);
-            const response = await axios.get(audioJsonUrl);
-            if (response.data.audio_url) {
-                return { url: response.data.audio_url, apiNumber: i + 1 };
-            }
-        } catch (error) {
-            console.error(`API #${i + 1} failed:`, error.message);
-        }
-    }
-    return null;
-}
-
-/**
  * **Process Audio with Watermark**
  */
-async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chatId, apiNumber) {
+async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chatId) {
     const coverImagePath = 'cover.jpg';
     const watermarkAudioPath = 'watermark.mp3';
     const finalOutputName = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.mp3`;
@@ -76,7 +103,7 @@ async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chat
         const coverImageResponse = await axios.get(coverUrl, { responseType: 'arraybuffer' });
         fs.writeFileSync(coverImagePath, coverImageResponse.data);
 
-        await bot.sendMessage(chatId, `⏳ Processing audio from API #${apiNumber}...`);
+        await bot.sendMessage(chatId, '⏳ Processing audio...');
 
         return new Promise((resolve, reject) => {
             ffmpeg()
@@ -114,17 +141,20 @@ async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chat
 }
 
 /**
- * **Fetch and Process Audio**
+ * **Fetch & Process Audio**
  */
 async function fetchAndProcessAudio(chatId, videoId) {
     try {
         const metadata = await getYouTubeMetadata(videoId);
         if (!metadata) throw new Error('Metadata fetch failed');
 
-        const audioData = await getAudioUrl(videoId);
-        if (!audioData) throw new Error('No audio URL found from any API');
+        const audioJsonUrl = koyebApiJson + encodeURIComponent(`https://youtu.be/${videoId}`);
+        const audioJsonResponse = await axios.get(audioJsonUrl);
+        const audioUrl = audioJsonResponse.data.audio_url;
 
-        const processedFilePath = await processAudioWithWatermark(audioData.url, metadata.thumbnail, metadata.title, metadata.artist, chatId, audioData.apiNumber);
+        if (!audioUrl) throw new Error('No audio URL found');
+
+        const processedFilePath = await processAudioWithWatermark(audioUrl, metadata.thumbnail, metadata.title, metadata.artist, chatId);
         await bot.sendAudio(chatId, processedFilePath);
 
         setTimeout(() => {
@@ -144,30 +174,34 @@ bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const query = msg.text;
 
-    if (query.startsWith('http')) {
-        const videoId = extractVideoId(query);
-        if (videoId) {
-            await bot.sendMessage(chatId, '🔍 Fetching details...');
-            await fetchAndProcessAudio(chatId, videoId);
-        } else {
-            await bot.sendMessage(chatId, '❌ Invalid YouTube URL.');
-        }
+    if (query === '/vivek') {
+        await bot.sendMessage(chatId, '📡 Send a URL to keep pinging:');
+    } else if (query.startsWith('http')) {
+        pingUrls.push(query);
+        await bot.sendMessage(chatId, `✅ URL added for pinging.`);
+    } else if (query === '/remove') {
+        await bot.sendMessage(chatId, '🗑 Send the URL to remove from pinging:');
     } else {
-        await bot.sendMessage(chatId, '❌ Please enter a valid YouTube URL.');
+        await searchYouTube(query, chatId);
     }
 });
 
 /**
- * **Extract Video ID from URL**
+ * **Ping URLs**
  */
-function extractVideoId(url) {
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|youtu.be\/|\/v\/)([^#&?]*).*/;
-    const match = url.match(regExp);
-    return match && match[2].length === 11 ? match[2] : null;
-}
+setInterval(async () => {
+    for (const url of pingUrls) {
+        try {
+            await axios.get(url);
+            console.log(`Pinged: ${url}`);
+        } catch (error) {
+            console.error(`Failed to ping: ${url}`);
+        }
+    }
+}, 240000); // 4 minutes
 
 /**
- * **Express Server (Keep Bot Alive)**
+ * **Express Server**
  */
 app.get('/', (req, res) => {
     res.send('🤖 Bot is running...');
