@@ -11,9 +11,11 @@ const PORT = process.env.PORT || 3000;
 const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
 const youtubeApiKey = 'AIzaSyBfsNcJJHd-O0ftUzH2KqIRc_KhXgPXne0';
 
-// API URLs
-const koyebApiAudio = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/play?url=';
-const koyebApiJson = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/json?url=';
+// Multiple Audio API URLs (jitne chaho add kar sakte ho)
+const audioApis = [
+    'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/json?url=',
+    'https://vivekfy.vercel.app/json?url=',
+];
 
 // Watermark URL
 const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
@@ -22,35 +24,7 @@ const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/w
 const bot = new TelegramBot(botToken, { polling: true });
 
 /**
- * **YouTube Video Search using YouTube Data API v3**
- */
-async function searchYouTube(query, chatId) {
-    try {
-        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=5&q=${encodeURIComponent(query)}&key=${youtubeApiKey}`;
-        const response = await axios.get(searchUrl);
-        const videos = response.data.items;
-
-        if (videos.length > 0) {
-            const options = {
-                reply_markup: {
-                    inline_keyboard: videos.map(video => [{
-                        text: video.snippet.title,
-                        callback_data: video.id.videoId
-                    }])
-                }
-            };
-            await bot.sendMessage(chatId, '🔍 Search Results:', options);
-        } else {
-            await bot.sendMessage(chatId, '❌ No results found.');
-        }
-    } catch (error) {
-        console.error('Error searching YouTube:', error);
-        await bot.sendMessage(chatId, '⚠️ Try again.');
-    }
-}
-
-/**
- * **Extract YouTube Video Metadata**
+ * **YouTube Video Metadata Fetch**
  */
 async function getYouTubeMetadata(videoId) {
     try {
@@ -59,8 +33,8 @@ async function getYouTubeMetadata(videoId) {
         const video = response.data.items[0].snippet;
 
         return {
-            title: video.title,
-            artist: video.channelTitle,
+            title: `${video.title} - Vivekfy`,
+            artist: `${video.channelTitle} + vfy.ai`,
             thumbnail: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`
         };
     } catch (error) {
@@ -70,9 +44,27 @@ async function getYouTubeMetadata(videoId) {
 }
 
 /**
+ * **Fetch Audio URL from Multiple APIs**
+ */
+async function getAudioUrl(videoId) {
+    for (let i = 0; i < audioApis.length; i++) {
+        try {
+            const audioJsonUrl = audioApis[i] + encodeURIComponent(`https://youtu.be/${videoId}`);
+            const response = await axios.get(audioJsonUrl);
+            if (response.data.audio_url) {
+                return { url: response.data.audio_url, apiNumber: i + 1 };
+            }
+        } catch (error) {
+            console.error(`API #${i + 1} failed:`, error.message);
+        }
+    }
+    return null;
+}
+
+/**
  * **Process Audio with Watermark**
  */
-async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chatId) {
+async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chatId, apiNumber) {
     const coverImagePath = 'cover.jpg';
     const watermarkAudioPath = 'watermark.mp3';
     const finalOutputName = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.mp3`;
@@ -84,7 +76,7 @@ async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chat
         const coverImageResponse = await axios.get(coverUrl, { responseType: 'arraybuffer' });
         fs.writeFileSync(coverImagePath, coverImageResponse.data);
 
-        await bot.sendMessage(chatId, '⏳ Processing audio...');
+        await bot.sendMessage(chatId, `⏳ Processing audio from API #${apiNumber}...`);
 
         return new Promise((resolve, reject) => {
             ffmpeg()
@@ -129,13 +121,10 @@ async function fetchAndProcessAudio(chatId, videoId) {
         const metadata = await getYouTubeMetadata(videoId);
         if (!metadata) throw new Error('Metadata fetch failed');
 
-        const audioJsonUrl = koyebApiJson + encodeURIComponent(`https://youtu.be/${videoId}`);
-        const audioJsonResponse = await axios.get(audioJsonUrl);
-        const audioUrl = audioJsonResponse.data.audio_url;
+        const audioData = await getAudioUrl(videoId);
+        if (!audioData) throw new Error('No audio URL found from any API');
 
-        if (!audioUrl) throw new Error('No audio URL found');
-
-        const processedFilePath = await processAudioWithWatermark(audioUrl, metadata.thumbnail, metadata.title, metadata.artist, chatId);
+        const processedFilePath = await processAudioWithWatermark(audioData.url, metadata.thumbnail, metadata.title, metadata.artist, chatId, audioData.apiNumber);
         await bot.sendAudio(chatId, processedFilePath);
 
         setTimeout(() => {
@@ -164,7 +153,7 @@ bot.on('message', async (msg) => {
             await bot.sendMessage(chatId, '❌ Invalid YouTube URL.');
         }
     } else {
-        await searchYouTube(query, chatId);
+        await bot.sendMessage(chatId, '❌ Please enter a valid YouTube URL.');
     }
 });
 
@@ -176,17 +165,6 @@ function extractVideoId(url) {
     const match = url.match(regExp);
     return match && match[2].length === 11 ? match[2] : null;
 }
-
-/**
- * **Handle Callback Query (Search Selection)**
- */
-bot.on('callback_query', async (callbackQuery) => {
-    const chatId = callbackQuery.message.chat.id;
-    const videoId = callbackQuery.data;
-
-    await bot.sendMessage(chatId, '🔍 Fetching details...');
-    await fetchAndProcessAudio(chatId, videoId);
-});
 
 /**
  * **Express Server (Keep Bot Alive)**
