@@ -26,7 +26,7 @@ const bot = new TelegramBot(botToken, { polling: true });
  */
 async function searchYouTube(query, chatId) {
     try {
-        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=5&q=${encodeURIComponent(query)}&key=${youtubeApiKey}`;
+        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=20&q=${encodeURIComponent(query)}&key=${youtubeApiKey}`;
         const response = await axios.get(searchUrl);
         const videos = response.data.items;
 
@@ -102,7 +102,7 @@ async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chat
                     '-map', '0:a',
                     '-map', '2:v',
                     '-c:v', 'mjpeg',
-                    '-vf', "drawtext=text='Download from vivekfy':fontcolor=#000000:fontsize=34:box=1:boxcolor=#ffffff@0.6:x=(W-text_w)/2:y=H*0.8-text_h"
+                    '-vf', "drawtext=text='VIVEK-MASONA':fontcolor=#000000:fontsize=34:box=1:boxcolor=#ffffff@0.9:x=(W-text_w)/2:y=H*0.8-text_h"
                 ])
                 .save(finalOutputName)
                 .on('end', async () => {
