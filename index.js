@@ -50,7 +50,7 @@ async function searchYouTube(query, chatId) {
 }
 
 /**
- * **Extract YouTube Video Metadata**
+ * **Extract YouTube Video Metadata (With Full HD Thumbnail)**
  */
 async function getYouTubeMetadata(videoId) {
     try {
@@ -61,7 +61,7 @@ async function getYouTubeMetadata(videoId) {
         return {
             title: video.title,
             artist: video.channelTitle,
-            thumbnail: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`
+            thumbnail: `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg` // Full HD Thumbnail
         };
     } catch (error) {
         console.error('Error fetching metadata:', error);
@@ -102,7 +102,7 @@ async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chat
                     '-map', '0:a',
                     '-map', '2:v',
                     '-c:v', 'mjpeg',
-                    '-vf', "drawtext=text='VIVEK-MASONA':fontcolor=#000000:fontsize=34:box=1:boxcolor=#ffffff@0.9:x=(W-text_w)/2:y=H*0.8-text_h"
+                    '-vf', "drawtext=text='vivek💞masona':fontcolor=#000000:fontsize=34:box=1:boxcolor=#ffffff@0.9:x=(W-text_w)/2:y=H*0.8-text_h"
                 ])
                 .save(finalOutputName)
                 .on('end', async () => {
@@ -213,5 +213,5 @@ function keepAlive() {
     }, 240000); // 4 minutes
 }
 
-// Keep-alive function ko start karein
+// Start keep-alive function
 keepAlive();
