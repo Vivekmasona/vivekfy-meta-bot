@@ -199,3 +199,19 @@ app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
 });
 
+/**
+ * **Keep Alive Request**
+ */
+function keepAlive() {
+    setInterval(async () => {
+        try {
+            await axios.get('https://vivekfy-meta-bot-1.onrender.com');
+            console.log('✅ Keep-alive request sent');
+        } catch (error) {
+            console.error('❌ Keep-alive request failed:', error.message);
+        }
+    }, 240000); // 4 minutes
+}
+
+// Keep-alive function ko start karein
+keepAlive();
