@@ -50,7 +50,7 @@ async function searchYouTube(query, chatId) {
 }
 
 /**
- * **Extract YouTube Video Metadata (With Full HD Thumbnail)**
+ * **Extract YouTube Video Metadata**
  */
 async function getYouTubeMetadata(videoId) {
     try {
@@ -61,7 +61,7 @@ async function getYouTubeMetadata(videoId) {
         return {
             title: video.title,
             artist: video.channelTitle,
-            thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` // Full HD Thumbnail
+            thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
         };
     } catch (error) {
         console.error('Error fetching metadata:', error);
@@ -178,7 +178,7 @@ function extractVideoId(url) {
 }
 
 /**
- * **Handle Callback Query (Search Selection)**
+ * **Handle Callback Query**
  */
 bot.on('callback_query', async (callbackQuery) => {
     const chatId = callbackQuery.message.chat.id;
@@ -200,18 +200,24 @@ app.listen(PORT, () => {
 });
 
 /**
- * **Keep Alive Request**
+ * **Keep Alive Request for Multiple URLs**
  */
+const keepAliveUrls = [
+    'https://vivekfy-meta-bot-1.onrender.com',
+    'https://vivekfy-v2.onrender.com'
+];
+
 function keepAlive() {
     setInterval(async () => {
-        try {
-            await axios.get('https://vivekfy-meta-bot-1.onrender.com');
-            console.log('✅ Keep-alive request sent');
-        } catch (error) {
-            console.error('❌ Keep-alive request failed:', error.message);
+        for (const url of keepAliveUrls) {
+            try {
+                await axios.get(url);
+                console.log(`✅ Keep-alive request sent to ${url}`);
+            } catch (error) {
+                console.error(`❌ Keep-alive request failed for ${url}:`, error.message);
+            }
         }
-    }, 240000); // 4 minutes
+    }, 240000);
 }
 
-// Start keep-alive function
 keepAlive();
