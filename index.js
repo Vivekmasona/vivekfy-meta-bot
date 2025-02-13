@@ -102,7 +102,7 @@ async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chat
                     '-map', '0:a',
                     '-map', '2:v',
                     '-c:v', 'mjpeg',
-                    '-vf', "drawtext=text='vivekfy ai':fontcolor=#000000:fontsize=60:box=1:boxcolor=#ffffff@0.9:x=(W-text_w)/2:y=H*0.8-text_h"
+                    '-vf', "drawtext=text='vivekfy':fontcolor=#000000:fontsize=40:box=1:boxcolor=#ffffff@0.9:x=(W-text_w)/2:y=H*0.8-text_h"
                 ])
                 .save(finalOutputName)
                 .on('end', async () => {
