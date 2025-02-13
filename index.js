@@ -61,7 +61,7 @@ async function getYouTubeMetadata(videoId) {
         return {
             title: video.title,
             artist: video.channelTitle,
-            thumbnail: `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg` // Full HD Thumbnail
+            thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` // Full HD Thumbnail
         };
     } catch (error) {
         console.error('Error fetching metadata:', error);
