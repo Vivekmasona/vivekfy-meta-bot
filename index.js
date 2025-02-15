@@ -22,7 +22,7 @@ const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/w
 const bot = new TelegramBot(botToken, { polling: true });
 
 /**
- * **YouTube Video Search using YouTube Data API v3**
+ * **YouTube Video Search**
  */
 async function searchYouTube(query, chatId) {
     try {
@@ -61,7 +61,7 @@ async function getYouTubeMetadata(videoId) {
         return {
             title: video.title,
             artist: video.channelTitle,
-            thumbnail: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`  // High Quality Thumbnail
+            thumbnail: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`
         };
     } catch (error) {
         console.error('Error fetching metadata:', error);
@@ -103,8 +103,8 @@ async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chat
                     '-metadata', `artist=${artist}`,
                     '-map', '0:a',
                     '-map', '2:v',
-                    '-c:v', 'png', // PNG format for best quality
-                    '-q:v', '1', // Highest quality
+                    '-c:v', 'png',
+                    '-q:v', '1',
                     '-vf', "scale=-1:ih, drawtext=text='vivekfy':fontcolor=#000000:fontsize=40:box=1:boxcolor=#ffffff@0.9:x=(W-text_w)/2:y=H*0.8-text_h"
                 ])
                 .save(finalOutputName)
