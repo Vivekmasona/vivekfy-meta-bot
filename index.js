@@ -7,7 +7,7 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Bot Token & API Keys
+// Bot Token
 const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
 const youtubeApiKey = 'AIzaSyBfsNcJJHd-O0ftUzH2KqIRc_KhXgPXne0';
 
@@ -15,14 +15,14 @@ const youtubeApiKey = 'AIzaSyBfsNcJJHd-O0ftUzH2KqIRc_KhXgPXne0';
 const koyebApiAudio = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/play?url=';
 const koyebApiJson = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/json?url=';
 
-// Watermark Audio URL
+// Watermark URL
 const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
 
 // Bot instance
 const bot = new TelegramBot(botToken, { polling: true });
 
 /**
- * **YouTube Video Search**
+ * **YouTube Video Search using YouTube Data API v3**
  */
 async function searchYouTube(query, chatId) {
     try {
@@ -61,7 +61,7 @@ async function getYouTubeMetadata(videoId) {
         return {
             title: video.title,
             artist: video.channelTitle,
-            thumbnail: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`
+            thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
         };
     } catch (error) {
         console.error('Error fetching metadata:', error);
@@ -78,11 +78,9 @@ async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chat
     const finalOutputName = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.mp3`;
 
     try {
-        // Download Watermark Audio
         const watermarkAudioResponse = await axios.get(watermarkUrl, { responseType: 'arraybuffer' });
         fs.writeFileSync(watermarkAudioPath, watermarkAudioResponse.data);
 
-        // Download Cover Image
         const coverImageResponse = await axios.get(coverUrl, { responseType: 'arraybuffer' });
         fs.writeFileSync(coverImagePath, coverImageResponse.data);
 
@@ -103,9 +101,8 @@ async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chat
                     '-metadata', `artist=${artist}`,
                     '-map', '0:a',
                     '-map', '2:v',
-                    '-c:v', 'png',
-                    '-q:v', '1',
-                    '-vf', "scale=-1:ih, drawtext=text='vivekfy':fontcolor=#000000:fontsize=40:box=1:boxcolor=#ffffff@0.9:x=(W-text_w)/2:y=H*0.8-text_h"
+                    '-c:v', 'mjpeg',
+                    '-vf', "drawtext=text='vivekfy':fontcolor=#000000:fontsize=40:box=1:boxcolor=#ffffff@0.9:x=(W-text_w)/2:y=H*0.8-text_h"
                 ])
                 .save(finalOutputName)
                 .on('end', async () => {
@@ -203,20 +200,25 @@ app.listen(PORT, () => {
 });
 
 /**
- * **Keep Alive Requests**
+ * **Keep Alive Request for Multiple URLs**
  */
 const keepAliveUrls = [
     'https://vivekfy-meta-bot-1.onrender.com',
     'https://vivekfy-v2.onrender.com'
 ];
 
-setInterval(async () => {
-    for (const url of keepAliveUrls) {
-        try {
-            await axios.get(url);
-            console.log(`✅ Keep-alive request sent to ${url}`);
-        } catch (error) {
-            console.error(`❌ Keep-alive failed for ${url}:`, error.message);
+function keepAlive() {
+    setInterval(async () => {
+        for (const url of keepAliveUrls) {
+            try {
+                await axios.get(url);
+                console.log(`✅ Keep-alive request sent to ${url}`);
+            } catch (error) {
+                console.error(`❌ Keep-alive request failed for ${url}:`, error.message);
+            }
         }
-    }
-}, 240000);
+    }, 240000);
+}
+
+keepAlive();
+
