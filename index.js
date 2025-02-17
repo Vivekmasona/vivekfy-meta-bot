@@ -6,7 +6,7 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 🔹 Bot & API Keys
+// Bot Token
 const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
 const youtubeApiKey = 'AIzaSyBX_-obwbQ3MZKeMTYS9x8SzjiXojl3nWs';
 
@@ -14,38 +14,36 @@ const youtubeApiKey = 'AIzaSyBX_-obwbQ3MZKeMTYS9x8SzjiXojl3nWs';
 const koyebApiAudio = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/play?url=';
 const koyebApiJson = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/json?url=';
 
-// 🔹 Watermark URL
-const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
+// 🔹 Watermark Text
+const watermarkText = 'vivekfy ai';
 
 // 📌 Initialize Telegram Bot
 const bot = new TelegramBot(botToken, { polling: true });
 
 /**
- * 🔍 **YouTube Search Function**
+ * 🖼 **Fetch YouTube Thumbnails & Select Best**
  */
-async function searchYouTube(query, chatId) {
-    try {
-        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=20&q=${encodeURIComponent(query)}&key=${youtubeApiKey}`;
-        const response = await axios.get(searchUrl);
-        const videos = response.data.items;
+async function getBestThumbnail(videoId) {
+    const sizes = ["maxresdefault", "hqdefault", "mqdefault", "sddefault", "default"];
+    let bestThumbnail = null;
+    let maxSize = 0;
 
-        if (videos.length > 0) {
-            const options = {
-                reply_markup: {
-                    inline_keyboard: videos.map(video => [{
-                        text: video.snippet.title,
-                        callback_data: video.id.videoId
-                    }])
-                }
-            };
-            await bot.sendMessage(chatId, '🔍 Search Results:', options);
-        } else {
-            await bot.sendMessage(chatId, '❌ No results found.');
+    for (const size of sizes) {
+        const url = `https://i.ytimg.com/vi/${videoId}/${size}.jpg`;
+        try {
+            const response = await axios.head(url);
+            const fileSize = parseInt(response.headers['content-length'] || 0);
+
+            if (fileSize > maxSize) {
+                maxSize = fileSize;
+                bestThumbnail = url;
+            }
+        } catch (error) {
+            console.warn(`Thumbnail not available: ${url}`);
         }
-    } catch (error) {
-        console.error('Error searching YouTube:', error);
-        await bot.sendMessage(chatId, '⚠️ Try again.');
     }
+
+    return bestThumbnail || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
 }
 
 /**
@@ -57,10 +55,13 @@ async function getYouTubeMetadata(videoId) {
         const response = await axios.get(metadataUrl);
         const video = response.data.items[0].snippet;
 
+        // ✅ Best Thumbnail Selection
+        const bestThumbnail = await getBestThumbnail(videoId);
+
         return {
             title: video.title,
             artist: video.channelTitle,
-            thumbnail: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` // ✅ High-Quality MQDefault
+            thumbnail: bestThumbnail
         };
     } catch (error) {
         console.error('Error fetching metadata:', error);
@@ -69,46 +70,38 @@ async function getYouTubeMetadata(videoId) {
 }
 
 /**
- * 🔹 **Process Audio with Watermark & HQ Thumbnail**
+ * 🔹 **Process Audio with Watermark & Best Thumbnail**
  */
 async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chatId) {
     const coverImagePath = 'cover.jpg';
-    const watermarkAudioPath = 'watermark.mp3';
     const finalOutputName = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.mp3`;
 
     try {
-        // 📌 Download MQDefault Cover Image
+        // 📌 Download Best Thumbnail
         const coverImageResponse = await axios.get(coverUrl, { responseType: 'arraybuffer' });
         fs.writeFileSync(coverImagePath, coverImageResponse.data);
 
-        // 📌 Download Watermark Audio
-        const watermarkAudioResponse = await axios.get(watermarkUrl, { responseType: 'arraybuffer' });
-        fs.writeFileSync(watermarkAudioPath, watermarkAudioResponse.data);
-
-        await bot.sendMessage(chatId, '⏳ Processing audio with MQDefault HQ poster...');
+        await bot.sendMessage(chatId, '⏳ Processing audio with best quality poster...');
 
         return new Promise((resolve, reject) => {
             ffmpeg()
                 .input(audioUrl) // ✅ Original Audio
-                .input(watermarkAudioPath) // ✅ High-Quality Watermark
-                .input(coverImagePath) // ✅ Original MQDefault Poster
+                .input(coverImagePath) // ✅ Best Quality Thumbnail
                 .complexFilter([
-                    '[0]volume=1[a]',
-                    '[1]adelay=10000|10000,volume=8.5[b]',
-                    '[a][b]amix=inputs=2'
+                    `[0:a]volume=1[a]`,
+                    `[a]asetpts=PTS-STARTPTS, drawtext=text='${watermarkText}':x=(w-tw)/2:y=(h-th-10):fontsize=30:fontcolor=white`
                 ])
                 .outputOptions([
                     '-metadata', `title=${title}`,
                     '-metadata', `artist=${artist}`,
                     '-map', '0:a', // ✅ Audio Track
-                    '-map', '2:v', // ✅ MQDefault Image As Poster
+                    '-map', '1:v', // ✅ Best Quality Image As Poster
                     '-c:v', 'mjpeg', // ✅ High-Quality Image Format
                     '-q:v', '1' // ✅ Lossless Image Quality
                 ])
                 .save(finalOutputName)
                 .on('end', async () => {
                     fs.unlinkSync(coverImagePath);
-                    fs.unlinkSync(watermarkAudioPath);
                     resolve(finalOutputName);
                 })
                 .on('error', (err) => {
@@ -165,7 +158,7 @@ bot.on('message', async (msg) => {
             await bot.sendMessage(chatId, '❌ Invalid YouTube URL.');
         }
     } else {
-        await searchYouTube(query, chatId);
+        await bot.sendMessage(chatId, '⚡ Send a valid YouTube URL.');
     }
 });
 
@@ -177,17 +170,6 @@ function extractVideoId(url) {
     const match = url.match(regExp);
     return match && match[2].length === 11 ? match[2] : null;
 }
-
-/**
- * 🖲 **Handle Callback Query**
- */
-bot.on('callback_query', async (callbackQuery) => {
-    const chatId = callbackQuery.message.chat.id;
-    const videoId = callbackQuery.data;
-
-    await bot.sendMessage(chatId, '🔍 Fetching details...');
-    await fetchAndProcessAudio(chatId, videoId);
-});
 
 /**
  * 🌍 **Express Server**
