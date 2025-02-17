@@ -7,8 +7,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ✅ Bot Token & API Keys
-const botToken = 'YOUR_TELEGRAM_BOT_TOKEN';
-const youtubeApiKey = 'YOUR_YOUTUBE_API_KEY';
+const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
+const youtubeApiKey = 'AIzaSyBX_-obwbQ3MZKeMTYS9x8SzjiXojl3nWs';
 
 // ✅ API URLs
 const koyebApiAudio = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/play?url=';
@@ -16,8 +16,8 @@ const koyebApiJson = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/json?url
 
 // ✅ Permanent URLs for Keep-Alive
 const permanentUrls = [
-    'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/play',
-    'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/json'
+    'https://vivekfy-meta-bot-1.onrender.com',
+    'https://vivekfy-v2.onrender.com'
 ];
 
 // ✅ User Saved URLs
