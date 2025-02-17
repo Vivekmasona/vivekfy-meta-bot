@@ -7,58 +7,28 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Bot Token
+// 🔹 Telegram Bot Token
 const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
+const bot = new TelegramBot(botToken, { polling: true });
 
-// API URLs
+// 🔹 YouTube API Key
+const youtubeApiKey = 'AIzaSyBX_-obwbQ3MZKeMTYS9x8SzjiXojl3nWs';
+const youtubeSearchUrl = 'https://www.googleapis.com/youtube/v3/search';
+
+// 🔹 API URLs
 const koyebApiAudio = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/play?url=';
 const koyebApiJson = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/json?url=';
 
-// Watermark URL
+// 🔹 Watermark Audio URL
 const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
 
-// Keep-alive URLs
+// 🔹 Keep-alive URLs
 let keepAliveUrls = [
     'https://vivekfy-meta-bot-1.onrender.com',
     'https://vivekfy-v2.onrender.com'
 ];
 
-// Bot instance
-const bot = new TelegramBot(botToken, { polling: true });
-
-/**
- * **Alive Command: Add Keep-Alive URL**
- */
-bot.onText(/\/alive (.+)/, async (msg, match) => {
-    const chatId = msg.chat.id;
-    const newUrl = match[1].trim();
-
-    if (!keepAliveUrls.includes(newUrl)) {
-        keepAliveUrls.push(newUrl);
-        await bot.sendMessage(chatId, `✅ Added to keep-alive list: ${newUrl}`);
-    } else {
-        await bot.sendMessage(chatId, `⚠️ URL already exists in the list.`);
-    }
-});
-
-/**
- * **Remove Command: Remove Keep-Alive URL**
- */
-bot.onText(/\/remove (.+)/, async (msg, match) => {
-    const chatId = msg.chat.id;
-    const removeUrl = match[1].trim();
-
-    if (keepAliveUrls.includes(removeUrl)) {
-        keepAliveUrls = keepAliveUrls.filter(url => url !== removeUrl);
-        await bot.sendMessage(chatId, `❌ Removed from keep-alive list: ${removeUrl}`);
-    } else {
-        await bot.sendMessage(chatId, `⚠️ URL not found in the list.`);
-    }
-});
-
-/**
- * **Keep Alive Request**
- */
+// 🔹 Keep Bot Alive
 function keepAlive() {
     setInterval(async () => {
         for (const url of keepAliveUrls) {
@@ -74,9 +44,50 @@ function keepAlive() {
 
 keepAlive();
 
-/**
- * **Process Audio with Progress Update**
- */
+// 📌 **YouTube Search Function (API V3)**
+async function searchYouTube(query) {
+    try {
+        const response = await axios.get(youtubeSearchUrl, {
+            params: {
+                part: 'snippet',
+                q: query,
+                key: youtubeApiKey,
+                maxResults: 5,
+                type: 'video'
+            }
+        });
+
+        return response.data.items.map(video => ({
+            title: video.snippet.title,
+            videoId: video.id.videoId,
+            thumbnail: video.snippet.thumbnails.high.url
+        }));
+    } catch (error) {
+        console.error('YouTube API Error:', error.message);
+        return [];
+    }
+}
+
+// 🔹 **YouTube Search Command**
+bot.onText(/\/yt (.+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const query = match[1];
+
+    const results = await searchYouTube(query);
+
+    if (results.length === 0) {
+        return bot.sendMessage(chatId, "❌ No results found.");
+    }
+
+    let response = `🔍 **Search Results for:** ${query}\n\n`;
+    results.forEach((video, index) => {
+        response += `📌 *${index + 1}.* [${video.title}](https://youtu.be/${video.videoId})\n`;
+    });
+
+    await bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
+});
+
+// 📌 **Process Audio with Watermark & Cover**
 async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chatId) {
     const coverImagePath = 'cover.jpg';
     const watermarkAudioPath = 'watermark.mp3';
@@ -93,7 +104,7 @@ async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chat
 
         return new Promise((resolve, reject) => {
             let lastSentProgress = 0;
-            
+
             ffmpeg()
                 .input(audioUrl)
                 .input(watermarkAudioPath)
@@ -135,9 +146,7 @@ async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chat
     }
 }
 
-/**
- * **Settings Command**
- */
+// 📌 **Settings Command**
 bot.onText(/\/setting/, async (msg) => {
     const chatId = msg.chat.id;
     const settingsMessage = `
@@ -153,9 +162,33 @@ bot.onText(/\/setting/, async (msg) => {
     await bot.sendMessage(chatId, settingsMessage, { parse_mode: "Markdown" });
 });
 
-/**
- * **Express Server (Keep Bot Alive)**
- */
+// 📌 **Alive Command (`/alive <url>`)**
+bot.onText(/\/alive (.+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const newUrl = match[1].trim();
+
+    if (!keepAliveUrls.includes(newUrl)) {
+        keepAliveUrls.push(newUrl);
+        await bot.sendMessage(chatId, `✅ Added to keep-alive list: ${newUrl}`);
+    } else {
+        await bot.sendMessage(chatId, `⚠️ URL already exists in the list.`);
+    }
+});
+
+// 📌 **Remove Command (`/remove <url>`)**
+bot.onText(/\/remove (.+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const removeUrl = match[1].trim();
+
+    if (keepAliveUrls.includes(removeUrl)) {
+        keepAliveUrls = keepAliveUrls.filter(url => url !== removeUrl);
+        await bot.sendMessage(chatId, `❌ Removed from keep-alive list: ${removeUrl}`);
+    } else {
+        await bot.sendMessage(chatId, `⚠️ URL not found in the list.`);
+    }
+});
+
+// 📌 **Express Server (Keep Bot Alive)**
 app.get('/', (req, res) => {
     res.send('🤖 Bot is running...');
 });
