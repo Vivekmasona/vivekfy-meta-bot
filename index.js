@@ -1,53 +1,54 @@
+const http = require('http');
 const TelegramBot = require('node-telegram-bot-api');
-const axios = require('axios');
 const fs = require('fs');
 const ffmpeg = require('fluent-ffmpeg');
+const axios = require('axios');
 const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Bot Token
+// 🔹 Bot Token
 const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
 const youtubeApiKey = 'AIzaSyBX_-obwbQ3MZKeMTYS9x8SzjiXojl3nWs';
-
 // 🔹 API URLs
-const koyebApiAudio = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/play?url=';
 const koyebApiJson = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/json?url=';
 
-// 🔹 Watermark Text
-const watermarkText = 'vivekfy ai';
+// 🔹 Watermark URL & Text
+const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
+const watermarkText = 'Vivekfy AI';
 
-// 📌 Initialize Telegram Bot
+// 🔹 Bot Instance
 const bot = new TelegramBot(botToken, { polling: true });
 
 /**
- * 🖼 **Fetch YouTube Thumbnails & Select Best**
+ * **YouTube Thumbnails Fetch & Best Selection**
  */
 async function getBestThumbnail(videoId) {
-    const sizes = ["maxresdefault", "hqdefault", "mqdefault", "sddefault", "default"];
-    let bestThumbnail = null;
-    let maxSize = 0;
+    const baseUrl = `https://i.ytimg.com/vi/${videoId}`;
+    const qualityTags = ['maxresdefault', 'sddefault', 'hqdefault', 'mqdefault', 'default'];
 
-    for (const size of sizes) {
-        const url = `https://i.ytimg.com/vi/${videoId}/${size}.jpg`;
+    let bestThumbnail = { url: '', size: 0 };
+
+    for (const tag of qualityTags) {
+        const thumbUrl = `${baseUrl}/${tag}.jpg`;
+
         try {
-            const response = await axios.head(url);
-            const fileSize = parseInt(response.headers['content-length'] || 0);
+            const response = await axios.head(thumbUrl);
+            const size = parseInt(response.headers['content-length'] || '0', 10);
 
-            if (fileSize > maxSize) {
-                maxSize = fileSize;
-                bestThumbnail = url;
+            if (size > bestThumbnail.size) {
+                bestThumbnail = { url: thumbUrl, size };
             }
         } catch (error) {
-            console.warn(`Thumbnail not available: ${url}`);
+            console.log(`❌ Thumbnail not found: ${thumbUrl}`);
         }
     }
 
-    return bestThumbnail || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+    return bestThumbnail;
 }
 
 /**
- * 🎵 **Fetch YouTube Video Metadata**
+ * **Fetch YouTube Video Metadata**
  */
 async function getYouTubeMetadata(videoId) {
     try {
@@ -55,13 +56,9 @@ async function getYouTubeMetadata(videoId) {
         const response = await axios.get(metadataUrl);
         const video = response.data.items[0].snippet;
 
-        // ✅ Best Thumbnail Selection
-        const bestThumbnail = await getBestThumbnail(videoId);
-
         return {
             title: video.title,
-            artist: video.channelTitle,
-            thumbnail: bestThumbnail
+            artist: video.channelTitle
         };
     } catch (error) {
         console.error('Error fetching metadata:', error);
@@ -70,38 +67,44 @@ async function getYouTubeMetadata(videoId) {
 }
 
 /**
- * 🔹 **Process Audio with Watermark & Best Thumbnail**
+ * **Process Audio with Watermark & Thumbnail**
  */
 async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chatId) {
     const coverImagePath = 'cover.jpg';
+    const watermarkAudioPath = 'watermark.mp3';
     const finalOutputName = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.mp3`;
 
     try {
-        // 📌 Download Best Thumbnail
+        const watermarkAudioResponse = await axios.get(watermarkUrl, { responseType: 'arraybuffer' });
+        fs.writeFileSync(watermarkAudioPath, watermarkAudioResponse.data);
+
         const coverImageResponse = await axios.get(coverUrl, { responseType: 'arraybuffer' });
         fs.writeFileSync(coverImagePath, coverImageResponse.data);
 
-        await bot.sendMessage(chatId, '⏳ Processing audio with best quality poster...');
+        await bot.sendMessage(chatId, '⏳ Processing audio...');
 
         return new Promise((resolve, reject) => {
             ffmpeg()
-                .input(audioUrl) // ✅ Original Audio
-                .input(coverImagePath) // ✅ Best Quality Thumbnail
+                .input(audioUrl)
+                .input(watermarkAudioPath)
+                .input(coverImagePath)
                 .complexFilter([
-                    `[0:a]volume=1[a]`,
-                    `[a]asetpts=PTS-STARTPTS, drawtext=text='${watermarkText}':x=(w-tw)/2:y=(h-th-10):fontsize=30:fontcolor=white`
+                    '[0]volume=1[a]',
+                    '[1]adelay=10000|10000,volume=8.5[b]',
+                    '[a][b]amix=inputs=2'
                 ])
                 .outputOptions([
                     '-metadata', `title=${title}`,
                     '-metadata', `artist=${artist}`,
-                    '-map', '0:a', // ✅ Audio Track
-                    '-map', '1:v', // ✅ Best Quality Image As Poster
-                    '-c:v', 'mjpeg', // ✅ High-Quality Image Format
-                    '-q:v', '1' // ✅ Lossless Image Quality
+                    '-map', '0:a',
+                    '-map', '2:v',
+                    '-c:v', 'mjpeg',
+                    '-vf', `drawtext=text='${watermarkText}':fontcolor=#000000:fontsize=40:box=1:boxcolor=#ffffff@0.9:x=(W-text_w)/2:y=H*0.8-text_h`
                 ])
                 .save(finalOutputName)
                 .on('end', async () => {
                     fs.unlinkSync(coverImagePath);
+                    fs.unlinkSync(watermarkAudioPath);
                     resolve(finalOutputName);
                 })
                 .on('error', (err) => {
@@ -116,20 +119,26 @@ async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chat
 }
 
 /**
- * 🎧 **Fetch & Process YouTube Audio**
+ * **Fetch & Process Audio**
  */
 async function fetchAndProcessAudio(chatId, videoId) {
     try {
         const metadata = await getYouTubeMetadata(videoId);
         if (!metadata) throw new Error('Metadata fetch failed');
 
+        const bestThumbnail = await getBestThumbnail(videoId);
+        if (!bestThumbnail.url) throw new Error('No valid thumbnail found');
+
         const audioJsonUrl = koyebApiJson + encodeURIComponent(`https://youtu.be/${videoId}`);
         const audioJsonResponse = await axios.get(audioJsonUrl);
         const audioUrl = audioJsonResponse.data.audio_url;
+        const audioSize = parseInt(audioJsonResponse.headers['content-length'] || '0', 10) / (1024 * 1024);
 
         if (!audioUrl) throw new Error('No audio URL found');
 
-        const processedFilePath = await processAudioWithWatermark(audioUrl, metadata.thumbnail, metadata.title, metadata.artist, chatId);
+        await bot.sendMessage(chatId, `🎵 **Title:** ${metadata.title}\n🎤 **Artist:** ${metadata.artist}\n📂 **Audio Size:** ${audioSize.toFixed(2)} MB\n🖼 **Poster Size:** ${(bestThumbnail.size / (1024 * 1024)).toFixed(2)} MB\n⏳ **Processing...**`);
+
+        const processedFilePath = await processAudioWithWatermark(audioUrl, bestThumbnail.url, metadata.title, metadata.artist, chatId);
         await bot.sendAudio(chatId, processedFilePath);
 
         setTimeout(() => {
@@ -143,7 +152,7 @@ async function fetchAndProcessAudio(chatId, videoId) {
 }
 
 /**
- * 🛠 **Handle Messages**
+ * **Handle Messages**
  */
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
@@ -158,26 +167,29 @@ bot.on('message', async (msg) => {
             await bot.sendMessage(chatId, '❌ Invalid YouTube URL.');
         }
     } else {
-        await bot.sendMessage(chatId, '⚡ Send a valid YouTube URL.');
+        await bot.sendMessage(chatId, '❌ Please provide a YouTube link.');
     }
 });
 
 /**
- * 🎥 **Extract YouTube Video ID**
+ * **Keep Alive**
  */
-function extractVideoId(url) {
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|youtu.be\/|\/v\/)([^#&?]*).*/;
-    const match = url.match(regExp);
-    return match && match[2].length === 11 ? match[2] : null;
+const keepAliveUrls = [
+    'https://vivekfy-meta-bot-1.onrender.com',
+    'https://vivekfy-v2.onrender.com'
+];
+
+function keepAlive() {
+    setInterval(async () => {
+        for (const url of keepAliveUrls) {
+            try {
+                await axios.get(url);
+                console.log(`✅ Keep-alive request sent to ${url}`);
+            } catch (error) {
+                console.error(`❌ Keep-alive request failed for ${url}:`, error.message);
+            }
+        }
+    }, 240000);
 }
 
-/**
- * 🌍 **Express Server**
- */
-app.get('/', (req, res) => {
-    res.send('🤖 Bot is running...');
-});
-
-app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-});
+keepAlive();
