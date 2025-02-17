@@ -1,3 +1,4 @@
+const http = require('http');
 const TelegramBot = require('node-telegram-bot-api');
 const fs = require('fs');
 const ffmpeg = require('fluent-ffmpeg');
@@ -6,197 +7,159 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ✅ Bot Token & API Keys
+// Bot Token
 const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
-const youtubeApiKey = 'AIzaSyBX_-obwbQ3MZKeMTYS9x8SzjiXojl3nWs';
 
-// ✅ API URLs
+// API URLs
 const koyebApiAudio = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/play?url=';
 const koyebApiJson = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/json?url=';
 
-// ✅ Permanent URLs for Keep-Alive
-const permanentUrls = [
+// Watermark URL
+const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
+
+// Keep-alive URLs
+let keepAliveUrls = [
     'https://vivekfy-meta-bot-1.onrender.com',
     'https://vivekfy-v2.onrender.com'
 ];
 
-// ✅ User Saved URLs
-let userAliveUrls = [];
-
-// ✅ User Settings Storage
-let userSettings = {}; // Format: { chatId: { editMode: "auto" | "manual" } }
-
-// ✅ Create Bot Instance
+// Bot instance
 const bot = new TelegramBot(botToken, { polling: true });
 
 /**
- * **🌐 Keep-Alive Request**
+ * **Alive Command: Add Keep-Alive URL**
+ */
+bot.onText(/\/alive (.+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const newUrl = match[1].trim();
+
+    if (!keepAliveUrls.includes(newUrl)) {
+        keepAliveUrls.push(newUrl);
+        await bot.sendMessage(chatId, `✅ Added to keep-alive list: ${newUrl}`);
+    } else {
+        await bot.sendMessage(chatId, `⚠️ URL already exists in the list.`);
+    }
+});
+
+/**
+ * **Remove Command: Remove Keep-Alive URL**
+ */
+bot.onText(/\/remove (.+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const removeUrl = match[1].trim();
+
+    if (keepAliveUrls.includes(removeUrl)) {
+        keepAliveUrls = keepAliveUrls.filter(url => url !== removeUrl);
+        await bot.sendMessage(chatId, `❌ Removed from keep-alive list: ${removeUrl}`);
+    } else {
+        await bot.sendMessage(chatId, `⚠️ URL not found in the list.`);
+    }
+});
+
+/**
+ * **Keep Alive Request**
  */
 function keepAlive() {
-    [...permanentUrls, ...userAliveUrls].forEach(url => {
-        axios.get(url)
-            .then(() => console.log(`✅ Keep-alive: ${url}`))
-            .catch(() => console.log(`❌ Failed: ${url}`));
-    });
-}
-setInterval(keepAlive, 5 * 60 * 1000); // Every 5 minutes
-
-/**
- * **📡 `/alive` Command (Store & Show URLs)**
- */
-bot.onText(/\/alive(.*)/, (msg, match) => {
-    const chatId = msg.chat.id;
-    const newUrl = match[1]?.trim();
-
-    if (newUrl) {
-        if (!userAliveUrls.includes(newUrl)) {
-            userAliveUrls.push(newUrl);
-            bot.sendMessage(chatId, `✅ URL added for keep-alive: ${newUrl}`);
-        } else {
-            bot.sendMessage(chatId, `ℹ️ URL already exists: ${newUrl}`);
+    setInterval(async () => {
+        for (const url of keepAliveUrls) {
+            try {
+                await axios.get(url);
+                console.log(`✅ Keep-alive request sent to ${url}`);
+            } catch (error) {
+                console.error(`❌ Keep-alive request failed for ${url}:`, error.message);
+            }
         }
-    } else {
-        const allUrls = [...permanentUrls, ...userAliveUrls].join('\n');
-        bot.sendMessage(chatId, `🌐 **Alive URLs:**\n${allUrls}`);
-    }
-});
-
-/**
- * **⚙️ `/settings` Command (User Preferences)**
- */
-bot.onText(/\/settings/, (msg) => {
-    const chatId = msg.chat.id;
-    const options = {
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: "Auto Edit", callback_data: "edit_auto" }],
-                [{ text: "Manual Edit", callback_data: "edit_manual" }]
-            ]
-        }
-    };
-    bot.sendMessage(chatId, "⚙️ **Choose Edit Mode:**", options);
-});
-
-bot.on('callback_query', (callbackQuery) => {
-    const chatId = callbackQuery.message.chat.id;
-    const choice = callbackQuery.data;
-
-    if (choice === "edit_auto" || choice === "edit_manual") {
-        userSettings[chatId] = { editMode: choice.split("_")[1] };
-        bot.sendMessage(chatId, `✅ Edit mode set to: ${userSettings[chatId].editMode}`);
-    }
-});
-
-/**
- * **🔍 YouTube Search**
- */
-async function searchYouTube(query, chatId) {
-    try {
-        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=10&q=${encodeURIComponent(query)}&key=${youtubeApiKey}`;
-        const response = await axios.get(searchUrl);
-        const videos = response.data.items;
-
-        if (videos.length > 0) {
-            const options = {
-                reply_markup: {
-                    inline_keyboard: videos.map(video => [{
-                        text: video.snippet.title,
-                        callback_data: video.id.videoId
-                    }])
-                }
-            };
-            bot.sendMessage(chatId, '🔍 Search Results:', options);
-        } else {
-            bot.sendMessage(chatId, '❌ No results found.');
-        }
-    } catch (error) {
-        bot.sendMessage(chatId, '⚠️ Error searching YouTube.');
-    }
+    }, 240000);
 }
 
+keepAlive();
+
 /**
- * **🎵 Process Audio & Add Watermark**
+ * **Process Audio with Progress Update**
  */
-async function processAudioWithWatermark(audioUrl, thumbnailUrl, title, artist, chatId) {
+async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chatId) {
+    const coverImagePath = 'cover.jpg';
+    const watermarkAudioPath = 'watermark.mp3';
     const finalOutputName = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.mp3`;
-    const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
 
     try {
-        await bot.sendMessage(chatId, "⏳ Processing Audio (0%)...");
-        const audioResponse = await axios.get(audioUrl, { responseType: 'arraybuffer' });
-        fs.writeFileSync('audio.mp3', audioResponse.data);
+        const watermarkAudioResponse = await axios.get(watermarkUrl, { responseType: 'arraybuffer' });
+        fs.writeFileSync(watermarkAudioPath, watermarkAudioResponse.data);
 
-        const watermarkResponse = await axios.get(watermarkUrl, { responseType: 'arraybuffer' });
-        fs.writeFileSync('watermark.mp3', watermarkResponse.data);
+        const coverImageResponse = await axios.get(coverUrl, { responseType: 'arraybuffer' });
+        fs.writeFileSync(coverImagePath, coverImageResponse.data);
 
-        await bot.sendMessage(chatId, "🔄 Processing Audio (50%)...");
+        await bot.sendMessage(chatId, '⏳ Processing audio...');
 
         return new Promise((resolve, reject) => {
+            let lastSentProgress = 0;
+            
             ffmpeg()
-                .input('audio.mp3')
-                .input('watermark.mp3')
-                .complexFilter('[0:a]volume=1[a];[1:a]volume=0.5[b];[a][b]amix=inputs=2')
+                .input(audioUrl)
+                .input(watermarkAudioPath)
+                .input(coverImagePath)
+                .complexFilter([
+                    '[0]volume=1[a]',
+                    '[1]adelay=10000|10000,volume=8.5[b]',
+                    '[a][b]amix=inputs=2'
+                ])
                 .outputOptions([
                     '-metadata', `title=${title}`,
                     '-metadata', `artist=${artist}`,
-                    '-codec:a', 'libmp3lame'
+                    '-map', '0:a',
+                    '-map', '2:v',
+                    '-c:v', 'mjpeg',
+                    '-vf', "drawtext=text='vivekfy':fontcolor=#000000:fontsize=40:box=1:boxcolor=#ffffff@0.9:x=(W-text_w)/2:y=H*0.8-text_h"
                 ])
                 .save(finalOutputName)
+                .on('progress', (progress) => {
+                    const percentage = Math.round(progress.percent);
+                    if (percentage >= lastSentProgress + 10) {
+                        bot.sendMessage(chatId, `🔄 Processing: ${percentage}%`);
+                        lastSentProgress = percentage;
+                    }
+                })
                 .on('end', async () => {
-                    bot.sendMessage(chatId, "✅ Processing Completed (100%)!");
+                    fs.unlinkSync(coverImagePath);
+                    fs.unlinkSync(watermarkAudioPath);
                     resolve(finalOutputName);
                 })
-                .on('error', (err) => reject(err));
+                .on('error', (err) => {
+                    console.error('Error adding watermark:', err);
+                    reject(err);
+                });
         });
     } catch (error) {
-        throw new Error("❌ Error Processing Audio.");
+        console.error('Error:', error);
+        throw new Error('Error processing audio.');
     }
 }
 
 /**
- * **🎶 Fetch & Process YouTube Audio**
+ * **Settings Command**
  */
-async function fetchAndProcessAudio(chatId, videoId) {
-    try {
-        const metadataUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${youtubeApiKey}`;
-        const response = await axios.get(metadataUrl);
-        const video = response.data.items[0].snippet;
-
-        const title = video.title;
-        const artist = video.channelTitle;
-        const thumbnail = `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
-
-        const audioJsonUrl = koyebApiJson + encodeURIComponent(`https://youtu.be/${videoId}`);
-        const audioJsonResponse = await axios.get(audioJsonUrl);
-        const audioUrl = audioJsonResponse.data.audio_url;
-
-        const processedFile = await processAudioWithWatermark(audioUrl, thumbnail, title, artist, chatId);
-        await bot.sendAudio(chatId, processedFile);
-
-        fs.unlinkSync(processedFile);
-    } catch (error) {
-        bot.sendMessage(chatId, "❌ Error Fetching Audio.");
-    }
-}
-
-/**
- * **📝 Handle Messages**
- */
-bot.on('message', async (msg) => {
+bot.onText(/\/setting/, async (msg) => {
     const chatId = msg.chat.id;
-    const query = msg.text;
+    const settingsMessage = `
+🔧 **Settings**
+🎥 Thumbnail Quality:
+1️⃣ Default (hqdefault)
+2️⃣ Medium (mqdefault)
+3️⃣ Standard (sddefault)
+4️⃣ Max Resolution (maxresdefault)
 
-    if (query.startsWith('http')) {
-        const videoId = query.split('v=')[1]?.split('&')[0];
-        if (videoId) {
-            await fetchAndProcessAudio(chatId, videoId);
-        } else {
-            bot.sendMessage(chatId, "❌ Invalid YouTube URL.");
-        }
-    } else {
-        await searchYouTube(query, chatId);
-    }
+📌 Developer: *Vivek Masona*
+    `;
+    await bot.sendMessage(chatId, settingsMessage, { parse_mode: "Markdown" });
 });
 
-app.get('/', (req, res) => res.send('Bot Running'));
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+/**
+ * **Express Server (Keep Bot Alive)**
+ */
+app.get('/', (req, res) => {
+    res.send('🤖 Bot is running...');
+});
+
+app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+});
