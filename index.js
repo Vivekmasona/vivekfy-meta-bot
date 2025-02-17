@@ -7,22 +7,22 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Bot Token
+// ✅ Bot Token & API Keys
 const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
 const youtubeApiKey = 'AIzaSyBX_-obwbQ3MZKeMTYS9x8SzjiXojl3nWs';
 
-// API URLs
+// ✅ API URLs
 const koyebApiAudio = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/play?url=';
 const koyebApiJson = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/json?url=';
 
-// Watermark URL
+// ✅ Watermark Audio URL
 const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
 
-// Bot instance
+// ✅ Create Bot Instance
 const bot = new TelegramBot(botToken, { polling: true });
 
 /**
- * **YouTube Video Search using YouTube Data API v3**
+ * **🔍 YouTube Search**
  */
 async function searchYouTube(query, chatId) {
     try {
@@ -50,7 +50,7 @@ async function searchYouTube(query, chatId) {
 }
 
 /**
- * **Extract YouTube Video Metadata**
+ * **📜 Extract YouTube Video Metadata**
  */
 async function getYouTubeMetadata(videoId) {
     try {
@@ -61,7 +61,7 @@ async function getYouTubeMetadata(videoId) {
         return {
             title: video.title,
             artist: video.channelTitle,
-            thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+            thumbnail: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`
         };
     } catch (error) {
         console.error('Error fetching metadata:', error);
@@ -70,7 +70,7 @@ async function getYouTubeMetadata(videoId) {
 }
 
 /**
- * **Process Audio with Watermark**
+ * **🎵 Process Audio with Watermark & Progress Updates**
  */
 async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chatId) {
     const coverImagePath = 'cover.jpg';
@@ -84,10 +84,12 @@ async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chat
         const coverImageResponse = await axios.get(coverUrl, { responseType: 'arraybuffer' });
         fs.writeFileSync(coverImagePath, coverImageResponse.data);
 
-        await bot.sendMessage(chatId, '⏳ Processing audio...');
+        await bot.sendMessage(chatId, '⏳ Processing audio started...');
 
         return new Promise((resolve, reject) => {
-            ffmpeg()
+            let lastProgress = 0;
+
+            const ffmpegProcess = ffmpeg()
                 .input(audioUrl)
                 .input(watermarkAudioPath)
                 .input(coverImagePath)
@@ -104,7 +106,13 @@ async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chat
                     '-c:v', 'mjpeg',
                     '-vf', "drawtext=text='vivekfy':fontcolor=#000000:fontsize=40:box=1:boxcolor=#ffffff@0.9:x=(W-text_w)/2:y=H*0.8-text_h"
                 ])
-                .save(finalOutputName)
+                .on('progress', async (progress) => {
+                    let percent = Math.round((progress.percent || 0));
+                    if (percent >= lastProgress + 10) {
+                        lastProgress = percent;
+                        await bot.sendMessage(chatId, `⏳ Processing: ${percent}% done`);
+                    }
+                })
                 .on('end', async () => {
                     fs.unlinkSync(coverImagePath);
                     fs.unlinkSync(watermarkAudioPath);
@@ -114,6 +122,8 @@ async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chat
                     console.error('Error adding watermark:', err);
                     reject(err);
                 });
+
+            ffmpegProcess.save(finalOutputName);
         });
     } catch (error) {
         console.error('Error:', error);
@@ -122,7 +132,7 @@ async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chat
 }
 
 /**
- * **Fetch and Process Audio**
+ * **🎼 Fetch & Process Audio**
  */
 async function fetchAndProcessAudio(chatId, videoId) {
     try {
@@ -149,7 +159,7 @@ async function fetchAndProcessAudio(chatId, videoId) {
 }
 
 /**
- * **Handle Messages**
+ * **📥 Handle User Messages**
  */
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
@@ -169,7 +179,7 @@ bot.on('message', async (msg) => {
 });
 
 /**
- * **Extract Video ID from URL**
+ * **🔗 Extract Video ID from URL**
  */
 function extractVideoId(url) {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|youtu.be\/|\/v\/)([^#&?]*).*/;
@@ -178,18 +188,7 @@ function extractVideoId(url) {
 }
 
 /**
- * **Handle Callback Query**
- */
-bot.on('callback_query', async (callbackQuery) => {
-    const chatId = callbackQuery.message.chat.id;
-    const videoId = callbackQuery.data;
-
-    await bot.sendMessage(chatId, '🔍 Fetching details...');
-    await fetchAndProcessAudio(chatId, videoId);
-});
-
-/**
- * **Express Server (Keep Bot Alive)**
+ * **🚀 Express Server (Keep Bot Alive)**
  */
 app.get('/', (req, res) => {
     res.send('🤖 Bot is running...');
@@ -198,28 +197,3 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
 });
-
-/**
- * **Keep Alive Request for Multiple URLs**
- */
-const keepAliveUrls = [
-    'https://vivekfy-meta-bot-1.onrender.com',
-    'https://vivekfy-v2.onrender.com'
-];
-
-function keepAlive() {
-    setInterval(async () => {
-        for (const url of keepAliveUrls) {
-            try {
-                await axios.get(url);
-                console.log(`✅ Keep-alive request sent to ${url}`);
-            } catch (error) {
-                console.error(`❌ Keep-alive request failed for ${url}:`, error.message);
-            }
-        }
-    }, 240000);
-}
-
-keepAlive();
-
-
