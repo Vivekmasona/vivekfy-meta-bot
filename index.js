@@ -1,28 +1,27 @@
-const http = require('http');
 const TelegramBot = require('node-telegram-bot-api');
+const axios = require('axios');
 const fs = require('fs');
 const ffmpeg = require('fluent-ffmpeg');
-const axios = require('axios');
 const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Bot Token
+// 🔹 Bot & API Keys
 const botToken = '7426827982:AAFNLzurDSYX8rEmdI-JxCRyKoZMtszTL7I';
 const youtubeApiKey = 'AIzaSyBX_-obwbQ3MZKeMTYS9x8SzjiXojl3nWs';
 
-// API URLs
+// 🔹 API URLs
 const koyebApiAudio = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/play?url=';
 const koyebApiJson = 'https://thirsty-editha-vivekfy-6cef7b64.koyeb.app/json?url=';
 
-// Watermark URL
+// 🔹 Watermark URL
 const watermarkUrl = 'https://github.com/Vivekmasona/dav12/raw/refs/heads/main/watermark.mp3';
 
-// Bot instance
+// 📌 Initialize Telegram Bot
 const bot = new TelegramBot(botToken, { polling: true });
 
 /**
- * **YouTube Video Search using YouTube Data API v3**
+ * 🔍 **YouTube Search Function**
  */
 async function searchYouTube(query, chatId) {
     try {
@@ -50,7 +49,7 @@ async function searchYouTube(query, chatId) {
 }
 
 /**
- * **Extract YouTube Video Metadata**
+ * 🎵 **Fetch YouTube Video Metadata**
  */
 async function getYouTubeMetadata(videoId) {
     try {
@@ -61,7 +60,7 @@ async function getYouTubeMetadata(videoId) {
         return {
             title: video.title,
             artist: video.channelTitle,
-            thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+            thumbnail: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` // ✅ High-Quality MQDefault
         };
     } catch (error) {
         console.error('Error fetching metadata:', error);
@@ -70,7 +69,7 @@ async function getYouTubeMetadata(videoId) {
 }
 
 /**
- * **Process Audio with Watermark**
+ * 🔹 **Process Audio with Watermark & HQ Thumbnail**
  */
 async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chatId) {
     const coverImagePath = 'cover.jpg';
@@ -78,19 +77,21 @@ async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chat
     const finalOutputName = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.mp3`;
 
     try {
-        const watermarkAudioResponse = await axios.get(watermarkUrl, { responseType: 'arraybuffer' });
-        fs.writeFileSync(watermarkAudioPath, watermarkAudioResponse.data);
-
+        // 📌 Download MQDefault Cover Image
         const coverImageResponse = await axios.get(coverUrl, { responseType: 'arraybuffer' });
         fs.writeFileSync(coverImagePath, coverImageResponse.data);
 
-        await bot.sendMessage(chatId, '⏳ Processing audio...');
+        // 📌 Download Watermark Audio
+        const watermarkAudioResponse = await axios.get(watermarkUrl, { responseType: 'arraybuffer' });
+        fs.writeFileSync(watermarkAudioPath, watermarkAudioResponse.data);
+
+        await bot.sendMessage(chatId, '⏳ Processing audio with MQDefault HQ poster...');
 
         return new Promise((resolve, reject) => {
             ffmpeg()
-                .input(audioUrl)
-                .input(watermarkAudioPath)
-                .input(coverImagePath)
+                .input(audioUrl) // ✅ Original Audio
+                .input(watermarkAudioPath) // ✅ High-Quality Watermark
+                .input(coverImagePath) // ✅ Original MQDefault Poster
                 .complexFilter([
                     '[0]volume=1[a]',
                     '[1]adelay=10000|10000,volume=8.5[b]',
@@ -99,10 +100,10 @@ async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chat
                 .outputOptions([
                     '-metadata', `title=${title}`,
                     '-metadata', `artist=${artist}`,
-                    '-map', '0:a',
-                    '-map', '2:v',
-                    '-c:v', 'mjpeg',
-                    '-vf', "drawtext=text='vivekfy':fontcolor=#000000:fontsize=40:box=1:boxcolor=#ffffff@0.9:x=(W-text_w)/2:y=H*0.8-text_h"
+                    '-map', '0:a', // ✅ Audio Track
+                    '-map', '2:v', // ✅ MQDefault Image As Poster
+                    '-c:v', 'mjpeg', // ✅ High-Quality Image Format
+                    '-q:v', '1' // ✅ Lossless Image Quality
                 ])
                 .save(finalOutputName)
                 .on('end', async () => {
@@ -122,7 +123,7 @@ async function processAudioWithWatermark(audioUrl, coverUrl, title, artist, chat
 }
 
 /**
- * **Fetch and Process Audio**
+ * 🎧 **Fetch & Process YouTube Audio**
  */
 async function fetchAndProcessAudio(chatId, videoId) {
     try {
@@ -149,7 +150,7 @@ async function fetchAndProcessAudio(chatId, videoId) {
 }
 
 /**
- * **Handle Messages**
+ * 🛠 **Handle Messages**
  */
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
@@ -169,7 +170,7 @@ bot.on('message', async (msg) => {
 });
 
 /**
- * **Extract Video ID from URL**
+ * 🎥 **Extract YouTube Video ID**
  */
 function extractVideoId(url) {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|youtu.be\/|\/v\/)([^#&?]*).*/;
@@ -178,7 +179,7 @@ function extractVideoId(url) {
 }
 
 /**
- * **Handle Callback Query**
+ * 🖲 **Handle Callback Query**
  */
 bot.on('callback_query', async (callbackQuery) => {
     const chatId = callbackQuery.message.chat.id;
@@ -189,7 +190,7 @@ bot.on('callback_query', async (callbackQuery) => {
 });
 
 /**
- * **Express Server (Keep Bot Alive)**
+ * 🌍 **Express Server**
  */
 app.get('/', (req, res) => {
     res.send('🤖 Bot is running...');
@@ -198,27 +199,3 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
 });
-
-/**
- * **Keep Alive Request for Multiple URLs**
- */
-const keepAliveUrls = [
-    'https://vivekfy-meta-bot-1.onrender.com',
-    'https://vivekfy-v2.onrender.com'
-];
-
-function keepAlive() {
-    setInterval(async () => {
-        for (const url of keepAliveUrls) {
-            try {
-                await axios.get(url);
-                console.log(`✅ Keep-alive request sent to ${url}`);
-            } catch (error) {
-                console.error(`❌ Keep-alive request failed for ${url}:`, error.message);
-            }
-        }
-    }, 240000);
-}
-
-keepAlive();
-
