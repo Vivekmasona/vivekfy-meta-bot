@@ -58,17 +58,10 @@ async function getYouTubeMetadata(videoId) {
         const response = await axios.get(metadataUrl);
         const video = response.data.items[0].snippet;
 
-        const thumbnails = video.thumbnails;
-        const availableThumbnails = Object.keys(thumbnails).map((key) => ({
-            quality: key,
-            url: thumbnails[key].url,
-            size: thumbnails[key].width * thumbnails[key].height / 1000 // size in KB
-        }));
-
         return {
             title: video.title,
             artist: video.channelTitle,
-            thumbnails: availableThumbnails
+            thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
         };
     } catch (error) {
         console.error('Error fetching metadata:', error);
@@ -142,40 +135,7 @@ async function fetchAndProcessAudio(chatId, videoId) {
 
         if (!audioUrl) throw new Error('No audio URL found');
 
-        // Ask user to select thumbnail or automatically choose the largest one
-        const options = metadata.thumbnails.map((thumbnail, index) => [{
-            text: `Quality: ${thumbnail.quality} | Size: ${thumbnail.size}KB`,
-            callback_data: `thumbnail_${index}`
-        }]);
-
-        const thumbnailMessage = await bot.sendMessage(chatId, 'Choose a thumbnail quality:', {
-            reply_markup: { inline_keyboard: options }
-        });
-
-        const thumbnailTimeout = setTimeout(async () => {
-            const largestThumbnail = metadata.thumbnails.reduce((prev, curr) => (curr.size > prev.size ? curr : prev));
-            await bot.sendMessage(chatId, `No selection made. Using the largest thumbnail: Quality: ${largestThumbnail.quality}`);
-            await processAndSendAudio(chatId, audioUrl, largestThumbnail.url, metadata.title, metadata.artist);
-        }, 4000);
-
-        bot.on('callback_query', async (callbackQuery) => {
-            if (callbackQuery.message.message_id === thumbnailMessage.message_id) {
-                const selectedIndex = parseInt(callbackQuery.data.split('_')[1]);
-                const selectedThumbnail = metadata.thumbnails[selectedIndex];
-                clearTimeout(thumbnailTimeout);
-                await bot.sendMessage(chatId, `You selected: Quality: ${selectedThumbnail.quality}`);
-                await processAndSendAudio(chatId, audioUrl, selectedThumbnail.url, metadata.title, metadata.artist);
-            }
-        });
-    } catch (error) {
-        console.error('Error fetching audio:', error);
-        await bot.sendMessage(chatId, '❌ Error processing audio.');
-    }
-}
-
-async function processAndSendAudio(chatId, audioUrl, thumbnailUrl, title, artist) {
-    try {
-        const processedFilePath = await processAudioWithWatermark(audioUrl, thumbnailUrl, title, artist, chatId);
+        const processedFilePath = await processAudioWithWatermark(audioUrl, metadata.thumbnail, metadata.title, metadata.artist, chatId);
         await bot.sendAudio(chatId, processedFilePath);
 
         setTimeout(() => {
@@ -183,7 +143,8 @@ async function processAndSendAudio(chatId, audioUrl, thumbnailUrl, title, artist
             console.log(`File ${processedFilePath} deleted.`);
         }, 60 * 1000);
     } catch (error) {
-        console.error('Error during audio processing and sending:', error);
+        console.error('Error fetching audio:', error);
+        await bot.sendMessage(chatId, '❌ Error processing audio.');
     }
 }
 
@@ -260,3 +221,5 @@ function keepAlive() {
 }
 
 keepAlive();
+
+
